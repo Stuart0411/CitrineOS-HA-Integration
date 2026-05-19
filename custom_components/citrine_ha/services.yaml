@@ -1,0 +1,145 @@
+start_charging:
+  name: Start charging
+  description: Start a remote charging transaction on a station.
+  fields:
+    entry_id:
+      required: false
+      example: abcdef123456
+      selector:
+        text:
+    station_id:
+      required: true
+      example: liam
+      selector:
+        text:
+    protocol:
+      required: false
+      example: ocpp2.0.1
+      selector:
+        text:
+    id_tag:
+      required: false
+      example: HA_REMOTE
+      selector:
+        text:
+    evse_id:
+      required: false
+      example: 1
+      selector:
+        number:
+          min: 0
+          max: 999
+
+stop_charging:
+  name: Stop charging
+  description: Stop a remote charging transaction on a station.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
+    station_id:
+      required: true
+      example: liam
+      selector:
+        text:
+    protocol:
+      required: false
+      example: ocpp2.0.1
+      selector:
+        text:
+    transaction_id:
+      required: false
+      example: tx-123
+      selector:
+        text:
+
+set_station_limit:
+  name: Set station limit
+  description: Apply a station-level smart charging limit.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
+    station_id:
+      required: true
+      example: liam
+      selector:
+        text:
+    protocol:
+      required: false
+      selector:
+        text:
+    limit:
+      required: true
+      example: 12000
+      selector:
+        number:
+          min: 0
+          max: 500000
+    unit:
+      required: false
+      example: W
+      selector:
+        select:
+          options:
+            - W
+            - A
+    evse_id:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 999
+    duration:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 86400
+
+set_group_limit:
+  name: Set group limit
+  description: Apply a group cap and split equally across member stations.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
+    group_id:
+      required: true
+      selector:
+        text:
+    station_ids:
+      required: true
+      selector:
+        object:
+    limit:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 500000
+    unit:
+      required: false
+      selector:
+        select:
+          options:
+            - W
+            - A
+    duration:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 86400
+
+sync_discovery_now:
+  name: Sync discovery
+  description: Trigger an immediate Hasura discovery refresh.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
