@@ -11,6 +11,10 @@ import aiohttp
 class HasuraError(Exception):
     """Base Hasura error."""
 
+    def __init__(self, message: str, *, errors: list[dict[str, Any]] | None = None) -> None:
+        super().__init__(message)
+        self.errors = errors or []
+
 
 class HasuraAuthError(HasuraError):
     """Auth error for Hasura."""
@@ -66,7 +70,7 @@ class HasuraClient:
                 if resp.status >= 400:
                     raise HasuraError(f"Hasura HTTP error: {resp.status}")
                 if "errors" in data:
-                    raise HasuraError(str(data["errors"]))
+                    raise HasuraError(str(data["errors"]), errors=data["errors"])
                 return data
         except asyncio.TimeoutError as err:
             raise HasuraError("Hasura request timed out") from err

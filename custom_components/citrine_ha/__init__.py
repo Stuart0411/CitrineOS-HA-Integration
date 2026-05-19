@@ -138,10 +138,18 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             CONF_DEFAULT_ID_TAG,
             DEFAULT_DEFAULT_ID_TAG,
         )
+        explicit_evse_id = call.data.get(ATTR_EVSE_ID)
+        configured_evse_id = ctx["entry"].options.get(
+            CONF_DEFAULT_EVSE_ID,
+            ctx["entry"].data.get(CONF_DEFAULT_EVSE_ID, DEFAULT_DEFAULT_EVSE_ID),
+        )
         evse_id = int(
-            call.data.get(ATTR_EVSE_ID)
-            or _station_default_evse_id(coordinator, station_id)
-            or ctx["entry"].options.get(CONF_DEFAULT_EVSE_ID, DEFAULT_DEFAULT_EVSE_ID)
+            explicit_evse_id
+            if explicit_evse_id is not None
+            else configured_evse_id
+            if configured_evse_id is not None
+            else _station_default_evse_id(coordinator, station_id)
+            or DEFAULT_DEFAULT_EVSE_ID
         )
         remote_start_id = _consume_next_remote_start_id(coordinator, station_id)
 

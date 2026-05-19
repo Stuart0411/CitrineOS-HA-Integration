@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import timedelta
 from typing import Any
 
@@ -55,13 +56,24 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             DEFAULT_HASURA_QUERY,
         )
 
-        try:
-            result = await self._hasura_client.query(
-                query,
-                variables={"tenantId": tenant_id},
-            )
-        except HasuraError as err:
-            raise UpdateFailed(f"Hasura discovery failed: {err}") from err
+        active_query = query
+        for _attempt in range(4):
+            try:
+                result = await self._hasura_client.query(
+                    active_query,
+                    variables={"tenantId": tenant_id},
+                )
+                break
+            except HasuraError as err:
+                if "not a valid graphql query" in str(err).lower() and active_query != DEFAULT_HASURA_QUERY:
+                    active_query = DEFAULT_HASURA_QUERY
+                    continue
+                fallback_query = self._query_without_missing_fields(active_query, err)
+                if fallback_query == active_query:
+                    raise UpdateFailed(f"Hasura discovery failed: {err}") from err
+                active_query = fallback_query
+        else:
+            raise UpdateFailed("Hasura discovery failed after schema fallback retries")
 
         data = result.get("data", {})
         stations = self._extract_stations(data)
@@ -89,6 +101,31 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if isinstance(value, list):
                 return [item for item in value if isinstance(item, dict)]
         return []
+
+    @staticmethod
+    def _query_without_missing_fields(query: str, error: HasuraError) -> str:
+        updated = query
+        for item in error.errors:
+            message = item.get("message", "")
+            match = re.search(r"field '([^']+)' not found in type: '([^']+)'", message)
+            if not match:
+                continue
+            field_name, type_name = match.groups()
+            updated = CitrineCoordinator._remove_field_from_block(updated, type_name, field_name)
+        return " ".join(updated.split())
+
+    @staticmethod
+    def _remove_field_from_block(query: str, type_name: str, field_name: str) -> str:
+        pattern = re.compile(
+            rf"({re.escape(type_name)}(?:\s*\([^)]*\))?\s*\{{)([^}}]*)(\}})"
+        )
+
+        def _replace(match: re.Match[str]) -> str:
+            prefix, body, suffix = match.groups()
+            fields = [field for field in body.split() if field != field_name]
+            return f"{prefix}{' '.join(fields)}{suffix}"
+
+        return pattern.sub(_replace, query, count=1)
 
     @staticmethod
     def _extract_connectors(data: dict[str, Any]) -> list[dict[str, Any]]:

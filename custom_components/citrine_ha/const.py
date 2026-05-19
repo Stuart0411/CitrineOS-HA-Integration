@@ -33,10 +33,10 @@ DEFAULT_HASURA_QUERY = (
     " firmwareVersion tenantId locationId updatedAt latestOcppMessageTimestamp"
     " }"
     " Connectors(where: {tenantId: {_eq: $tenantId}}) {"
-    " id stationId chargingStationId connectorId evseId status isOnline updatedAt"
+    " id stationId connectorId evseId status updatedAt"
     " }"
     " Transactions(where: {tenantId: {_eq: $tenantId}}, order_by: {updatedAt: desc}, limit: 500) {"
-    " id stationId chargingStationId transactionId isActive active startedAt stoppedAt updatedAt"
+    " id stationId transactionId isActive active startedAt stoppedAt updatedAt"
     " }"
     "}"
 )

@@ -116,7 +116,7 @@ class CitrineStartChargingButton(CitrineBaseButton):
             CONF_DEFAULT_ID_TAG,
             self._entry.data.get(CONF_DEFAULT_ID_TAG, DEFAULT_DEFAULT_ID_TAG),
         )
-        evse_id = self._resolve_evse_id(station)
+        evse_id = self._resolve_start_target(station)
         remote_start_id = self._consume_next_remote_start_id(station)
 
         try:
@@ -130,7 +130,17 @@ class CitrineStartChargingButton(CitrineBaseButton):
         except CitrineApiError as err:
             raise HomeAssistantError(f"Start command failed: {err}") from err
 
-    def _resolve_evse_id(self, station: dict[str, Any]) -> int:
+    def _resolve_start_target(self, station: dict[str, Any]) -> int:
+        configured_evse_id = self._entry.options.get(
+            CONF_DEFAULT_EVSE_ID,
+            self._entry.data.get(CONF_DEFAULT_EVSE_ID, DEFAULT_DEFAULT_EVSE_ID),
+        )
+        if configured_evse_id is not None:
+            try:
+                return int(configured_evse_id)
+            except (TypeError, ValueError):
+                pass
+
         default_evse = station.get("defaultEvseId")
         if default_evse is not None:
             try:
