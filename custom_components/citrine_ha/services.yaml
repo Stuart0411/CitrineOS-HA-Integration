@@ -135,6 +135,110 @@ set_group_limit:
           min: 1
           max: 86400
 
+set_charging_profile:
+  name: Set charging profile
+  description: Set an explicit charging profile, adapting payload shape to each station OCPP version.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
+    station_id:
+      required: true
+      selector:
+        text:
+    protocol:
+      required: false
+      example: ocpp2.0.1
+      selector:
+        text:
+    limit:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 500000
+    unit:
+      required: false
+      selector:
+        select:
+          options:
+            - W
+            - A
+    evse_id:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 999
+    duration:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 86400
+    transaction_id:
+      required: false
+      selector:
+        text:
+    stack_level:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 999
+    profile_id:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 999999
+    profile_purpose:
+      required: false
+      example: TxProfile
+      selector:
+        text:
+
+clear_charging_profile:
+  name: Clear charging profile
+  description: Clear one or more charging profiles using OCPP-version aware criteria.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
+    station_id:
+      required: true
+      selector:
+        text:
+    protocol:
+      required: false
+      selector:
+        text:
+    evse_id:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 999
+    stack_level:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 999
+    profile_id:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 999999
+    profile_purpose:
+      required: false
+      example: TxProfile
+      selector:
+        text:
+
 sync_discovery_now:
   name: Sync discovery
   description: Trigger an immediate Hasura discovery refresh.

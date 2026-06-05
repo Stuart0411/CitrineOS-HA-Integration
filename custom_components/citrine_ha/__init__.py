@@ -20,7 +20,10 @@ from .const import (
     ATTR_GROUP_ID,
     ATTR_ID_TAG,
     ATTR_LIMIT,
+    ATTR_PROFILE_ID,
+    ATTR_PROFILE_PURPOSE,
     ATTR_PROTOCOL,
+    ATTR_STACK_LEVEL,
     ATTR_STATION_ID,
     ATTR_STATION_IDS,
     ATTR_TRANSACTION_ID,
@@ -39,6 +42,8 @@ from .const import (
     DOMAIN,
     PLATFORMS,
     SERVICE_SET_GROUP_LIMIT,
+    SERVICE_SET_CHARGING_PROFILE,
+    SERVICE_CLEAR_CHARGING_PROFILE,
     SERVICE_SET_STATION_LIMIT,
     SERVICE_START_CHARGING,
     SERVICE_STOP_CHARGING,
@@ -121,8 +126,10 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 async def _async_register_services(hass: HomeAssistant) -> None:
     """Register integration services once."""
 
-    if hass.services.has_service(DOMAIN, SERVICE_START_CHARGING):
-        return
+    def _register(name: str, handler: Any, schema: vol.Schema) -> None:
+        if hass.services.has_service(DOMAIN, name):
+            return
+        hass.services.async_register(DOMAIN, name, handler, schema=schema)
 
     async def async_handle_start(call: ServiceCall) -> None:
         ctx = _resolve_context(hass, call)
@@ -130,9 +137,9 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         client: CitrineClient = ctx["client"]
 
         station_id = call.data[ATTR_STATION_ID]
-        protocol = call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
-        if not protocol:
-            raise HomeAssistantError(f"Protocol not known for station {station_id}")
+        protocol = client.normalize_protocol(
+            call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
+        )
 
         id_tag = call.data.get(ATTR_ID_TAG) or ctx["entry"].options.get(
             CONF_DEFAULT_ID_TAG,
@@ -167,9 +174,9 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         client: CitrineClient = ctx["client"]
 
         station_id = call.data[ATTR_STATION_ID]
-        protocol = call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
-        if not protocol:
-            raise HomeAssistantError(f"Protocol not known for station {station_id}")
+        protocol = client.normalize_protocol(
+            call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
+        )
 
         transaction_id = call.data.get(ATTR_TRANSACTION_ID) or _station_current_transaction_id(
             coordinator,
@@ -192,9 +199,9 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         client: CitrineClient = ctx["client"]
 
         station_id = call.data[ATTR_STATION_ID]
-        protocol = call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
-        if not protocol:
-            raise HomeAssistantError(f"Protocol not known for station {station_id}")
+        protocol = client.normalize_protocol(
+            call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
+        )
 
         await client.set_station_limit(
             protocol=protocol,
@@ -203,6 +210,58 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             unit=str(call.data.get(ATTR_UNIT, "W")),
             evse_id=int(call.data.get(ATTR_EVSE_ID, 0)),
             duration=int(call.data.get(ATTR_DURATION, 300)),
+        )
+
+    async def async_handle_set_charging_profile(call: ServiceCall) -> None:
+        ctx = _resolve_context(hass, call)
+        coordinator = ctx["coordinator"]
+        client: CitrineClient = ctx["client"]
+
+        station_id = call.data[ATTR_STATION_ID]
+        protocol = client.normalize_protocol(
+            call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
+        )
+        capabilities = _station_capabilities(coordinator, station_id)
+        requested_unit = str(call.data.get(ATTR_UNIT, "W")).upper()
+        allowed_units = [str(unit).upper() for unit in capabilities.get("allowed_units", [])]
+        if allowed_units and requested_unit not in allowed_units:
+            requested_unit = str(capabilities.get("preferred_unit", allowed_units[0])).upper()
+
+        requested_purpose = call.data.get(ATTR_PROFILE_PURPOSE)
+        supported_purposes = capabilities.get("supported_profile_purposes", [])
+        if requested_purpose and supported_purposes and requested_purpose not in supported_purposes:
+            requested_purpose = str(capabilities.get("default_profile_purpose", supported_purposes[0]))
+
+        await client.set_charging_profile(
+            protocol=protocol,
+            station_id=station_id,
+            limit=float(call.data[ATTR_LIMIT]),
+            unit=requested_unit,
+            evse_id=int(call.data.get(ATTR_EVSE_ID, 0)),
+            duration=int(call.data.get(ATTR_DURATION, 300)),
+            stack_level=int(call.data.get(ATTR_STACK_LEVEL, 1)),
+            profile_id=call.data.get(ATTR_PROFILE_ID),
+            profile_purpose=requested_purpose,
+            transaction_id=call.data.get(ATTR_TRANSACTION_ID),
+        )
+
+    async def async_handle_clear_charging_profile(call: ServiceCall) -> None:
+        ctx = _resolve_context(hass, call)
+        coordinator = ctx["coordinator"]
+        client: CitrineClient = ctx["client"]
+
+        station_id = call.data[ATTR_STATION_ID]
+        protocol = client.normalize_protocol(
+            call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
+        )
+
+        await client.clear_charging_profile(
+            protocol=protocol,
+            station_id=station_id,
+            evse_id=int(call.data.get(ATTR_EVSE_ID, 0)),
+            profile_id=call.data.get(ATTR_PROFILE_ID),
+            stack_level=call.data.get(ATTR_STACK_LEVEL),
+            profile_purpose=call.data.get(ATTR_PROFILE_PURPOSE),
         )
 
     async def async_handle_set_group_limit(call: ServiceCall) -> None:
@@ -234,11 +293,10 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         coordinator = ctx["coordinator"]
         await coordinator.async_request_refresh()
 
-    hass.services.async_register(
-        DOMAIN,
+    _register(
         SERVICE_START_CHARGING,
         async_handle_start,
-        schema=vol.Schema(
+        vol.Schema(
             {
                 vol.Required(ATTR_STATION_ID): str,
                 vol.Optional(ATTR_ENTRY_ID): str,
@@ -249,11 +307,10 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         ),
     )
 
-    hass.services.async_register(
-        DOMAIN,
+    _register(
         SERVICE_STOP_CHARGING,
         async_handle_stop,
-        schema=vol.Schema(
+        vol.Schema(
             {
                 vol.Required(ATTR_STATION_ID): str,
                 vol.Optional(ATTR_TRANSACTION_ID): str,
@@ -263,11 +320,10 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         ),
     )
 
-    hass.services.async_register(
-        DOMAIN,
+    _register(
         SERVICE_SET_STATION_LIMIT,
         async_handle_set_station_limit,
-        schema=vol.Schema(
+        vol.Schema(
             {
                 vol.Required(ATTR_STATION_ID): str,
                 vol.Required(ATTR_LIMIT): vol.Coerce(float),
@@ -280,11 +336,10 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         ),
     )
 
-    hass.services.async_register(
-        DOMAIN,
+    _register(
         SERVICE_SET_GROUP_LIMIT,
         async_handle_set_group_limit,
-        schema=vol.Schema(
+        vol.Schema(
             {
                 vol.Required(ATTR_GROUP_ID): str,
                 vol.Required(ATTR_STATION_IDS): [str],
@@ -296,11 +351,46 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         ),
     )
 
-    hass.services.async_register(
-        DOMAIN,
+    _register(
+        SERVICE_SET_CHARGING_PROFILE,
+        async_handle_set_charging_profile,
+        vol.Schema(
+            {
+                vol.Required(ATTR_STATION_ID): str,
+                vol.Required(ATTR_LIMIT): vol.Coerce(float),
+                vol.Optional(ATTR_ENTRY_ID): str,
+                vol.Optional(ATTR_PROTOCOL): str,
+                vol.Optional(ATTR_EVSE_ID, default=0): int,
+                vol.Optional(ATTR_UNIT, default="W"): str,
+                vol.Optional(ATTR_DURATION, default=300): int,
+                vol.Optional(ATTR_TRANSACTION_ID): str,
+                vol.Optional(ATTR_STACK_LEVEL, default=1): int,
+                vol.Optional(ATTR_PROFILE_ID): int,
+                vol.Optional(ATTR_PROFILE_PURPOSE): str,
+            }
+        ),
+    )
+
+    _register(
+        SERVICE_CLEAR_CHARGING_PROFILE,
+        async_handle_clear_charging_profile,
+        vol.Schema(
+            {
+                vol.Required(ATTR_STATION_ID): str,
+                vol.Optional(ATTR_ENTRY_ID): str,
+                vol.Optional(ATTR_PROTOCOL): str,
+                vol.Optional(ATTR_EVSE_ID, default=0): int,
+                vol.Optional(ATTR_STACK_LEVEL): int,
+                vol.Optional(ATTR_PROFILE_ID): int,
+                vol.Optional(ATTR_PROFILE_PURPOSE): str,
+            }
+        ),
+    )
+
+    _register(
         SERVICE_SYNC_DISCOVERY_NOW,
         async_handle_sync,
-        schema=vol.Schema({vol.Optional(ATTR_ENTRY_ID): str}),
+        vol.Schema({vol.Optional(ATTR_ENTRY_ID): str}),
     )
 
 
@@ -327,10 +417,17 @@ def _resolve_context(hass: HomeAssistant, call: ServiceCall) -> dict[str, Any]:
 
 def _station_protocol(coordinator: CitrineCoordinator, station_id: str) -> str | None:
     station = _station_record(coordinator, station_id)
+    cached = coordinator.get_station_protocol(station_id)
+    if cached:
+        return cached
     if station is None:
         return None
     protocol = station.get("protocol")
     return str(protocol) if protocol else None
+
+
+def _station_capabilities(coordinator: CitrineCoordinator, station_id: str) -> dict[str, Any]:
+    return coordinator.get_station_capabilities(station_id)
 
 
 def _station_default_evse_id(coordinator: CitrineCoordinator, station_id: str) -> int | None:
@@ -395,6 +492,6 @@ def _consume_next_remote_start_id(
 def _station_record(coordinator: CitrineCoordinator, station_id: str) -> dict[str, Any] | None:
     stations = coordinator.data.get("stations", []) if coordinator.data else []
     for station in stations:
-        if station.get("id") == station_id:
+        if str(station.get("id")) == str(station_id):
             return station
     return None

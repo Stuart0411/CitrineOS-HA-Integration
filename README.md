@@ -1,5 +1,9 @@
 # CitrineOS Home Assistant Custom Component (Scaffold)
 
+<p align="center">
+  <img src="https://avatars.githubusercontent.com/u/132117031?s=200&v=4" alt="CitrineOS Logo" width="120" height="120" />
+</p>
+
 This repository now contains a scaffolded Home Assistant custom component for CitrineOS:
 
 - Domain: `citrine_ha`
@@ -24,20 +28,28 @@ This repository now contains a scaffolded Home Assistant custom component for Ci
 2. Discovery and entities
 - Polls Hasura with GraphQL and maps discovered stations into HA devices
 - Sensor per station for online state + metadata
+- Additional diagnostics sensors for protocol, connector count, session state, and OCPP heartbeat age
 - Number per station for max limit (W)
 - Start/Stop button entities per station
+- Dedicated charging profile UI entities (numbers, selects, and action buttons) so users can apply/clear profiles from dashboards without manual service calls
 
 3. Control services
 - `citrine_ha.start_charging`
 - `citrine_ha.stop_charging`
 - `citrine_ha.set_station_limit`
 - `citrine_ha.set_group_limit`
+- `citrine_ha.set_charging_profile`
+- `citrine_ha.clear_charging_profile`
 - `citrine_ha.sync_discovery_now`
 
 4. Protocol-aware API calls
 - OCPP 2.0.1 and OCPP 1.6 start/stop mappings
 - OCPP 2.0.1 and OCPP 1.6 smart charging profile mappings for limits
+- OCPP protocol normalization for mixed station metadata formats (for example `ocpp16`, `1.6`, `OCPP 2.0`)
+- Endpoint fallback workarounds for deployments exposing `/ocpp/2.0/*` instead of `/ocpp/2.0.1/*`
+- Retry workarounds for common profile issues (connector `0` rejection on OCPP 1.6, unit compatibility fallback)
 - OCPP 2.0.1 `remoteStartId` can be sourced from transactions and incremented per station
+- Per-station protocol and capability cache guides entity options and command payload selection
 
 ## Hasura query for stations, connectors, and transactions
 

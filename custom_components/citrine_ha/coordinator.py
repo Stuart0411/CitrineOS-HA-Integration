@@ -16,6 +16,11 @@ from .const import (
     CONF_SCAN_INTERVAL,
     CONF_TENANT_ID,
     DEFAULT_HASURA_QUERY,
+    DEFAULT_PROFILE_DURATION,
+    DEFAULT_PROFILE_LIMIT,
+    DEFAULT_PROFILE_PURPOSE,
+    DEFAULT_PROFILE_STACK_LEVEL,
+    DEFAULT_PROFILE_UNIT,
     DEFAULT_SCAN_INTERVAL,
 )
 from .hasura_client import HasuraClient, HasuraError
@@ -44,6 +49,9 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._hasura_client = hasura_client
         self._entry_data = entry_data
         self._entry_options = entry_options
+        self._protocol_cache: dict[str, str] = {}
+        self._capability_cache: dict[str, dict[str, Any]] = {}
+        self._profile_prefs: dict[str, dict[str, Any]] = {}
 
     async def _async_update_data(self) -> dict[str, Any]:
         tenant_id = int(self._entry_data[CONF_TENANT_ID])
@@ -84,6 +92,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             connectors=connectors,
             transactions=transactions,
         )
+        self._refresh_station_caches(merged_stations)
 
         return {
             "stations": merged_stations,
@@ -92,6 +101,39 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "source": "hasura",
             "hasura_url": self._entry_data.get(CONF_HASURA_URL),
         }
+
+    def get_station_protocol(self, station_id: str, fallback: str | None = None) -> str | None:
+        station_key = str(station_id)
+        if station_key in self._protocol_cache:
+            return self._protocol_cache[station_key]
+        return fallback
+
+    def get_station_capabilities(self, station_id: str) -> dict[str, Any]:
+        station_key = str(station_id)
+        return dict(self._capability_cache.get(station_key, {}))
+
+    def get_station_profile_preferences(self, station_id: str) -> dict[str, Any]:
+        station_key = str(station_id)
+        defaults = {
+            "limit": DEFAULT_PROFILE_LIMIT,
+            "unit": DEFAULT_PROFILE_UNIT,
+            "duration": DEFAULT_PROFILE_DURATION,
+            "evse_id": 0,
+            "stack_level": DEFAULT_PROFILE_STACK_LEVEL,
+            "profile_id": None,
+            "profile_purpose": DEFAULT_PROFILE_PURPOSE,
+        }
+        if station_key not in self._profile_prefs:
+            self._profile_prefs[station_key] = dict(defaults)
+        return {**defaults, **self._profile_prefs[station_key]}
+
+    def update_station_profile_preferences(self, station_id: str, **kwargs: Any) -> None:
+        station_key = str(station_id)
+        prefs = self.get_station_profile_preferences(station_key)
+        for key, value in kwargs.items():
+            if value is not None:
+                prefs[key] = value
+        self._profile_prefs[station_key] = prefs
 
     @staticmethod
     def _extract_stations(data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -276,3 +318,78 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if tx_id is None:
             return None
         return str(tx_id)
+
+    def _refresh_station_caches(self, stations: list[dict[str, Any]]) -> None:
+        for station in stations:
+            station_id = str(station.get("id", ""))
+            if not station_id:
+                continue
+
+            protocol = self._normalize_protocol(station.get("protocol"))
+            self._protocol_cache[station_id] = protocol
+
+            capabilities = self._derive_capabilities(station, protocol)
+            self._capability_cache[station_id] = capabilities
+
+            if station_id not in self._profile_prefs:
+                self._profile_prefs[station_id] = {
+                    "limit": DEFAULT_PROFILE_LIMIT,
+                    "unit": capabilities.get("preferred_unit", DEFAULT_PROFILE_UNIT),
+                    "duration": DEFAULT_PROFILE_DURATION,
+                    "evse_id": int(station.get("defaultEvseId") or 0),
+                    "stack_level": DEFAULT_PROFILE_STACK_LEVEL,
+                    "profile_id": None,
+                    "profile_purpose": capabilities.get(
+                        "default_profile_purpose",
+                        DEFAULT_PROFILE_PURPOSE,
+                    ),
+                }
+
+    @staticmethod
+    def _normalize_protocol(protocol: Any) -> str:
+        value = str(protocol or "").strip().lower().replace(" ", "")
+        if value in {"1.6", "ocpp1.6", "ocpp16", "ocpp-1.6"}:
+            return "ocpp1.6"
+        if value in {"2.0", "2.0.1", "ocpp2.0", "ocpp2.0.1", "ocpp201", "ocpp-2.0.1"}:
+            return "ocpp2.0.1"
+        return "ocpp2.0.1"
+
+    @staticmethod
+    def _derive_capabilities(station: dict[str, Any], protocol: str) -> dict[str, Any]:
+        connectors = station.get("connectors", [])
+        connector_count = len(connectors)
+
+        if protocol == "ocpp1.6":
+            return {
+                "supports_remote_start": True,
+                "supports_remote_stop": True,
+                "supports_set_charging_profile": True,
+                "supports_clear_charging_profile": True,
+                "allowed_units": ["A", "W"],
+                "preferred_unit": "A",
+                "supported_profile_purposes": [
+                    "ChargePointMaxProfile",
+                    "TxDefaultProfile",
+                    "TxProfile",
+                ],
+                "default_profile_purpose": "TxProfile",
+                "supports_transaction_profile": True,
+                "connector_count": connector_count,
+            }
+
+        return {
+            "supports_remote_start": True,
+            "supports_remote_stop": True,
+            "supports_set_charging_profile": True,
+            "supports_clear_charging_profile": True,
+            "allowed_units": ["W", "A"],
+            "preferred_unit": "W",
+            "supported_profile_purposes": [
+                "ChargingStationMaxProfile",
+                "TxDefaultProfile",
+                "TxProfile",
+            ],
+            "default_profile_purpose": "TxProfile",
+            "supports_transaction_profile": True,
+            "connector_count": connector_count,
+        }

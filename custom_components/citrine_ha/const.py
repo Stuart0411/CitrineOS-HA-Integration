@@ -2,7 +2,7 @@
 
 DOMAIN = "citrine_ha"
 
-PLATFORMS = ["sensor", "number", "button"]
+PLATFORMS = ["sensor", "number", "button", "select"]
 
 CONF_NAME = "name"
 CONF_BASE_URL = "base_url"
@@ -25,6 +25,11 @@ DEFAULT_REQUEST_TIMEOUT = 15
 DEFAULT_SCAN_INTERVAL = 30
 DEFAULT_DEFAULT_ID_TAG = "HA_REMOTE"
 DEFAULT_DEFAULT_EVSE_ID = 1
+DEFAULT_PROFILE_LIMIT = 7000.0
+DEFAULT_PROFILE_UNIT = "W"
+DEFAULT_PROFILE_DURATION = 300
+DEFAULT_PROFILE_STACK_LEVEL = 1
+DEFAULT_PROFILE_PURPOSE = "TxProfile"
 
 DEFAULT_HASURA_QUERY = (
     "query ChargingStations($tenantId: Int!) {"
@@ -33,10 +38,10 @@ DEFAULT_HASURA_QUERY = (
     " firmwareVersion tenantId locationId updatedAt latestOcppMessageTimestamp"
     " }"
     " Connectors(where: {tenantId: {_eq: $tenantId}}) {"
-    " id stationId connectorId evseId status updatedAt"
+    " id stationId chargingStationId connectorId evseId status isOnline errorCode updatedAt"
     " }"
     " Transactions(where: {tenantId: {_eq: $tenantId}}, order_by: {updatedAt: desc}, limit: 500) {"
-    " id stationId transactionId isActive active startedAt stoppedAt updatedAt"
+    " id stationId chargingStationId transactionId idToken isActive active startedAt stoppedAt updatedAt"
     " }"
     "}"
 )
@@ -45,6 +50,8 @@ SERVICE_START_CHARGING = "start_charging"
 SERVICE_STOP_CHARGING = "stop_charging"
 SERVICE_SET_STATION_LIMIT = "set_station_limit"
 SERVICE_SET_GROUP_LIMIT = "set_group_limit"
+SERVICE_SET_CHARGING_PROFILE = "set_charging_profile"
+SERVICE_CLEAR_CHARGING_PROFILE = "clear_charging_profile"
 SERVICE_SYNC_DISCOVERY_NOW = "sync_discovery_now"
 
 ATTR_ENTRY_ID = "entry_id"
@@ -58,3 +65,6 @@ ATTR_UNIT = "unit"
 ATTR_DURATION = "duration"
 ATTR_GROUP_ID = "group_id"
 ATTR_STATION_IDS = "station_ids"
+ATTR_PROFILE_ID = "profile_id"
+ATTR_PROFILE_PURPOSE = "profile_purpose"
+ATTR_STACK_LEVEL = "stack_level"
