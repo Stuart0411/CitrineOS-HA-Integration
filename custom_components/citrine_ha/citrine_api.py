@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import random
 from collections.abc import Mapping
@@ -87,11 +88,16 @@ class CitrineClient:
             ]
 
         params = self._identifier_params(station_id)
-        return await self._request_with_fallback_paths(
+        response = await self._request_with_fallback_paths(
             "POST",
             paths,
             params=params,
             json=payload,
+        )
+        return self._validate_command_response(
+            action="request_start_transaction",
+            station_id=station_id,
+            response=response,
         )
 
     async def request_stop_transaction(
@@ -120,11 +126,16 @@ class CitrineClient:
 
         params = self._identifier_params(station_id)
         try:
-            return await self._request_with_fallback_paths(
+            response = await self._request_with_fallback_paths(
                 "POST",
                 paths,
                 params=params,
                 json=payload,
+            )
+            return self._validate_command_response(
+                action="request_stop_transaction",
+                station_id=station_id,
+                response=response,
             )
         except CitrineApiError as err:
             # Some OCPP 2.x backends only accept integer-like transaction identifiers.
@@ -133,11 +144,16 @@ class CitrineClient:
                     int_tx_id = int(transaction_id)
                 except (TypeError, ValueError):
                     raise
-                return await self._request_with_fallback_paths(
+                response = await self._request_with_fallback_paths(
                     "POST",
                     paths,
                     params=params,
                     json={"transactionId": int_tx_id},
+                )
+                return self._validate_command_response(
+                    action="request_stop_transaction",
+                    station_id=station_id,
+                    response=response,
                 )
             raise err
 
@@ -200,11 +216,16 @@ class CitrineClient:
 
         params = self._identifier_params(station_id)
         try:
-            return await self._request_with_fallback_paths(
+            response = await self._request_with_fallback_paths(
                 "POST",
                 paths,
                 params=params,
                 json=payload,
+            )
+            return self._validate_command_response(
+                action="set_station_limit",
+                station_id=station_id,
+                response=response,
             )
         except CitrineApiError as err:
             message = str(err).lower()
@@ -212,11 +233,16 @@ class CitrineClient:
             if protocol == "ocpp1.6" and evse_id == 0:
                 retry_payload = dict(payload)
                 retry_payload["connectorId"] = 1
-                return await self._request_with_fallback_paths(
+                response = await self._request_with_fallback_paths(
                     "POST",
                     paths,
                     params=params,
                     json=retry_payload,
+                )
+                return self._validate_command_response(
+                    action="set_station_limit",
+                    station_id=station_id,
+                    response=response,
                 )
 
             # Some stations reject W and only accept A in profile schedules.
@@ -233,11 +259,16 @@ class CitrineClient:
                         ],
                     },
                 }
-                return await self._request_with_fallback_paths(
+                response = await self._request_with_fallback_paths(
                     "POST",
                     paths,
                     params=params,
                     json=retry_payload,
+                )
+                return self._validate_command_response(
+                    action="set_station_limit",
+                    station_id=station_id,
+                    response=response,
                 )
             raise err
 
@@ -312,11 +343,16 @@ class CitrineClient:
             ]
 
         params = self._identifier_params(station_id)
-        return await self._request_with_fallback_paths(
+        response = await self._request_with_fallback_paths(
             "POST",
             paths,
             params=params,
             json=payload,
+        )
+        return self._validate_command_response(
+            action="set_charging_profile",
+            station_id=station_id,
+            response=response,
         )
 
     async def clear_charging_profile(
@@ -360,11 +396,16 @@ class CitrineClient:
             ]
 
         params = self._identifier_params(station_id)
-        return await self._request_with_fallback_paths(
+        response = await self._request_with_fallback_paths(
             "POST",
             paths,
             params=params,
             json=payload,
+        )
+        return self._validate_command_response(
+            action="clear_charging_profile",
+            station_id=station_id,
+            response=response,
         )
 
     async def set_group_limit(
@@ -477,3 +518,99 @@ class CitrineClient:
         if last_error is not None:
             raise last_error
         raise CitrineApiError("No endpoint paths provided")
+
+    def _validate_command_response(
+        self,
+        *,
+        action: str,
+        station_id: str,
+        response: Any,
+    ) -> Any:
+        """Raise explicit errors when command payload indicates rejection despite HTTP success."""
+        if not isinstance(response, dict):
+            return response
+
+        tokens = self._extract_status_tokens(response)
+        reject_markers = {
+            "rejected",
+            "reject",
+            "notsupported",
+            "not_supported",
+            "unsupported",
+            "denied",
+            "failed",
+            "error",
+            "invalid",
+            "faulted",
+        }
+        accept_markers = {
+            "accepted",
+            "accept",
+            "ok",
+            "success",
+            "succeeded",
+            "scheduled",
+            "inprogress",
+            "pending",
+        }
+
+        if "accepted" in response and isinstance(response["accepted"], bool):
+            if not response["accepted"]:
+                compact = json.dumps(response, ensure_ascii=True, separators=(",", ":"))
+                _LOGGER.warning(
+                    "Citrine command rejected by payload: action=%s station=%s response=%s",
+                    action,
+                    station_id,
+                    compact,
+                )
+                raise CitrineApiError(
+                    f"Command {action} was not accepted for station {station_id}: {compact}"
+                )
+            return response
+
+        rejected = any(token in reject_markers for token in tokens)
+        accepted = any(token in accept_markers for token in tokens)
+        if rejected and not accepted:
+            compact = json.dumps(response, ensure_ascii=True, separators=(",", ":"))
+            _LOGGER.warning(
+                "Citrine command rejected by status token: action=%s station=%s response=%s",
+                action,
+                station_id,
+                compact,
+            )
+            raise CitrineApiError(
+                f"Command {action} was rejected for station {station_id}: {compact}"
+            )
+
+        _LOGGER.debug(
+            "Citrine command response: action=%s station=%s tokens=%s",
+            action,
+            station_id,
+            sorted(tokens),
+        )
+        return response
+
+    def _extract_status_tokens(self, payload: Any) -> set[str]:
+        """Recursively collect lower-cased status-ish values from a response payload."""
+        tokens: set[str] = set()
+
+        def _walk(node: Any, depth: int) -> None:
+            if depth > 6:
+                return
+            if isinstance(node, dict):
+                for key, value in node.items():
+                    key_l = str(key).lower()
+                    if isinstance(value, str) and (
+                        "status" in key_l
+                        or "result" in key_l
+                        or key_l in {"message", "reason", "state", "outcome"}
+                    ):
+                        tokens.add(value.strip().lower().replace(" ", ""))
+                    _walk(value, depth + 1)
+                return
+            if isinstance(node, list):
+                for item in node:
+                    _walk(item, depth + 1)
+
+        _walk(payload, 0)
+        return tokens
