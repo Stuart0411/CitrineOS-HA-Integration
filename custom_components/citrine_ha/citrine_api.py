@@ -345,18 +345,19 @@ class CitrineClient:
             paths = ["/ocpp/1.6/smartcharging/setChargingProfile"]
         else:
             start_schedule = self._iso_utc_now()
+            txprofile_relative = purpose_key == "txprofile"
+            default_kind = "Relative" if txprofile_relative else "Absolute"
             payload_base = {
                 "evseId": evse_id,
                 "chargingProfile": {
                     "id": profile_id or random.randint(1000, 9999),
                     "stackLevel": stack_level,
                     "chargingProfilePurpose": normalized_purpose,
-                    "chargingProfileKind": "Absolute",
+                    "chargingProfileKind": default_kind,
                     "chargingSchedule": [
                         {
                             "id": random.randint(1000, 9999),
                             "duration": duration,
-                            "startSchedule": start_schedule,
                             "chargingRateUnit": normalized_unit,
                             "chargingSchedulePeriod": [
                                 {"startPeriod": 0, "limit": round(limit, 1)}
@@ -365,6 +366,9 @@ class CitrineClient:
                     ],
                 },
             }
+            # startSchedule is mandatory for Absolute/Recurring, but not for Relative.
+            if default_kind in {"Absolute", "Recurring"}:
+                payload_base["chargingProfile"]["chargingSchedule"][0]["startSchedule"] = start_schedule
             payload_variants.append(payload_base)
 
             if transaction_id is not None and purpose_key == "txprofile":
@@ -384,6 +388,22 @@ class CitrineClient:
                 payload_both_tx = deepcopy(payload_profile_tx)
                 payload_both_tx["transactionId"] = tx_value
                 payload_variants.append(payload_both_tx)
+
+                # Compatibility fallback: some chargers reject Absolute TxProfile but accept Relative.
+                payload_absolute_profile_tx = deepcopy(payload_profile_tx)
+                payload_absolute_profile_tx["chargingProfile"]["chargingProfileKind"] = "Absolute"
+                payload_absolute_profile_tx["chargingProfile"]["chargingSchedule"][0]["startSchedule"] = start_schedule
+                payload_variants.append(payload_absolute_profile_tx)
+
+                payload_absolute_root_tx = deepcopy(payload_root_tx)
+                payload_absolute_root_tx["chargingProfile"]["chargingProfileKind"] = "Absolute"
+                payload_absolute_root_tx["chargingProfile"]["chargingSchedule"][0]["startSchedule"] = start_schedule
+                payload_variants.append(payload_absolute_root_tx)
+
+                payload_absolute_both_tx = deepcopy(payload_both_tx)
+                payload_absolute_both_tx["chargingProfile"]["chargingProfileKind"] = "Absolute"
+                payload_absolute_both_tx["chargingProfile"]["chargingSchedule"][0]["startSchedule"] = start_schedule
+                payload_variants.append(payload_absolute_both_tx)
 
             paths = [
                 "/ocpp/2.0.1/smartcharging/setChargingProfile",
