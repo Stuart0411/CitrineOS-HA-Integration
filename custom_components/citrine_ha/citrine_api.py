@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 import json
 import logging
 import random
@@ -289,14 +290,22 @@ class CitrineClient:
         """Apply an explicit charging profile with OCPP-specific structure."""
         protocol = self.normalize_protocol(protocol)
         normalized_unit = unit.upper()
+        normalized_purpose = str(profile_purpose or "TxProfile").strip()
+        purpose_key = normalized_purpose.lower()
+
+        # Station/charge-point max profiles should be station scoped.
+        if purpose_key in {"chargingstationmaxprofile", "chargepointmaxprofile"}:
+            evse_id = 0
+
+        payload_variants: list[dict[str, Any]] = []
 
         if protocol == "ocpp1.6":
-            payload: dict[str, Any] = {
+            payload_base: dict[str, Any] = {
                 "connectorId": evse_id,
                 "csChargingProfiles": {
                     "chargingProfileId": profile_id or random.randint(1000, 9999),
                     "stackLevel": stack_level,
-                    "chargingProfilePurpose": profile_purpose or "TxProfile",
+                    "chargingProfilePurpose": normalized_purpose,
                     "chargingProfileKind": "Absolute",
                     "chargingSchedule": {
                         "duration": duration,
@@ -307,20 +316,37 @@ class CitrineClient:
                     },
                 },
             }
-            if transaction_id is not None:
+            payload_variants.append(payload_base)
+
+            if transaction_id is not None and purpose_key == "txprofile":
                 try:
-                    payload["transactionId"] = int(transaction_id)
+                    tx_value: int | str = int(transaction_id)
                 except (TypeError, ValueError):
-                    payload["transactionId"] = transaction_id
+                    tx_value = transaction_id
+
+                # Variant 1: transactionId inside profile object.
+                payload_profile_tx = deepcopy(payload_base)
+                payload_profile_tx["csChargingProfiles"]["transactionId"] = tx_value
+                payload_variants.insert(0, payload_profile_tx)
+
+                # Variant 2: transactionId at request root.
+                payload_root_tx = deepcopy(payload_base)
+                payload_root_tx["transactionId"] = tx_value
+                payload_variants.append(payload_root_tx)
+
+                # Variant 3: include both locations for strict/legacy backends.
+                payload_both_tx = deepcopy(payload_profile_tx)
+                payload_both_tx["transactionId"] = tx_value
+                payload_variants.append(payload_both_tx)
 
             paths = ["/ocpp/1.6/smartcharging/setChargingProfile"]
         else:
-            payload = {
+            payload_base = {
                 "evseId": evse_id,
                 "chargingProfile": {
                     "id": profile_id or random.randint(1000, 9999),
                     "stackLevel": stack_level,
-                    "chargingProfilePurpose": profile_purpose or "TxProfile",
+                    "chargingProfilePurpose": normalized_purpose,
                     "chargingProfileKind": "Absolute",
                     "chargingSchedule": [
                         {
@@ -334,8 +360,25 @@ class CitrineClient:
                     ],
                 },
             }
-            if transaction_id is not None:
-                payload["transactionId"] = str(transaction_id)
+            payload_variants.append(payload_base)
+
+            if transaction_id is not None and purpose_key == "txprofile":
+                tx_value = str(transaction_id)
+
+                # Variant 1: transactionId inside chargingProfile object (OCPP 2.x common).
+                payload_profile_tx = deepcopy(payload_base)
+                payload_profile_tx["chargingProfile"]["transactionId"] = tx_value
+                payload_variants.insert(0, payload_profile_tx)
+
+                # Variant 2: transactionId at request root (backend-specific).
+                payload_root_tx = deepcopy(payload_base)
+                payload_root_tx["transactionId"] = tx_value
+                payload_variants.append(payload_root_tx)
+
+                # Variant 3: include both locations for strict/legacy backends.
+                payload_both_tx = deepcopy(payload_profile_tx)
+                payload_both_tx["transactionId"] = tx_value
+                payload_variants.append(payload_both_tx)
 
             paths = [
                 "/ocpp/2.0.1/smartcharging/setChargingProfile",
@@ -343,17 +386,51 @@ class CitrineClient:
             ]
 
         params = self._identifier_params(station_id)
-        response = await self._request_with_fallback_paths(
-            "POST",
-            paths,
-            params=params,
-            json=payload,
-        )
-        return self._validate_command_response(
-            action="set_charging_profile",
-            station_id=station_id,
-            response=response,
-        )
+        last_error: CitrineApiError | None = None
+        for index, payload in enumerate(payload_variants, start=1):
+            _LOGGER.warning(
+                "set_charging_profile request variant=%s station=%s protocol=%s purpose=%s evse=%s payload=%s",
+                index,
+                station_id,
+                protocol,
+                normalized_purpose,
+                evse_id,
+                payload,
+            )
+            try:
+                response = await self._request_with_fallback_paths(
+                    "POST",
+                    paths,
+                    params=params,
+                    json=payload,
+                )
+                _LOGGER.warning(
+                    "set_charging_profile response variant=%s station=%s protocol=%s purpose=%s evse=%s response=%s",
+                    index,
+                    station_id,
+                    protocol,
+                    normalized_purpose,
+                    evse_id,
+                    response,
+                )
+                return self._validate_command_response(
+                    action="set_charging_profile",
+                    station_id=station_id,
+                    response=response,
+                )
+            except CitrineApiError as err:
+                last_error = err
+                _LOGGER.warning(
+                    "set_charging_profile variant failed: variant=%s station=%s error=%s",
+                    index,
+                    station_id,
+                    err,
+                )
+                continue
+
+        if last_error is not None:
+            raise last_error
+        raise CitrineApiError("set_charging_profile failed with no payload variants")
 
     async def clear_charging_profile(
         self,

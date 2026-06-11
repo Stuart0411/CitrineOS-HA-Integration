@@ -292,6 +292,9 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
                     "TxDefaultProfile",
                 )
 
+        purpose_key = requested_purpose.lower()
+        tx_for_command = str(transaction_id) if (transaction_id is not None and purpose_key == "txprofile") else None
+
         limit_value = float(prefs.get("limit", 7000.0))
         supports_bidirectional = bool(capabilities.get("supports_bidirectional_power_transfer", False))
         if limit_value < 0 and not supports_bidirectional:
@@ -319,7 +322,7 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
                 limit_value,
                 requested_unit,
                 requested_purpose,
-                transaction_id,
+                tx_for_command,
             )
 
             await self._client.set_charging_profile(
@@ -332,7 +335,7 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
                 stack_level=stack_level,
                 profile_id=int(profile_id) if profile_id is not None else None,
                 profile_purpose=requested_purpose,
-                transaction_id=str(transaction_id) if transaction_id is not None else None,
+                transaction_id=tx_for_command,
             )
             await self.coordinator.async_request_refresh()
         except CitrineApiError as err:
