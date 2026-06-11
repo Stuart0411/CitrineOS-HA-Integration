@@ -344,6 +344,14 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         DEFAULT_PROFILE_PURPOSE,
                     ),
                 }
+            else:
+                # Migrate old defaults that used TxProfile by default, which can fail without a transaction.
+                existing = self._profile_prefs[station_id]
+                if existing.get("profile_purpose") == "TxProfile":
+                    existing["profile_purpose"] = capabilities.get(
+                        "default_profile_purpose",
+                        existing.get("profile_purpose"),
+                    )
 
     @staticmethod
     def _normalize_protocol(protocol: Any) -> str:
@@ -375,7 +383,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "TxDefaultProfile",
                     "TxProfile",
                 ],
-                "default_profile_purpose": "TxProfile",
+                "default_profile_purpose": "ChargePointMaxProfile",
                 "supports_transaction_profile": True,
                 "connector_count": connector_count,
             }
@@ -395,7 +403,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "TxDefaultProfile",
                 "TxProfile",
             ],
-            "default_profile_purpose": "TxProfile",
+            "default_profile_purpose": "ChargingStationMaxProfile",
             "supports_transaction_profile": True,
             "connector_count": connector_count,
         }

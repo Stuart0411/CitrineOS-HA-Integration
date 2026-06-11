@@ -232,6 +232,25 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         if requested_purpose and supported_purposes and requested_purpose not in supported_purposes:
             requested_purpose = str(capabilities.get("default_profile_purpose", supported_purposes[0]))
 
+        transaction_id = call.data.get(ATTR_TRANSACTION_ID) or _station_current_transaction_id(
+            coordinator,
+            station_id,
+        )
+
+        # TxProfile usually requires a transaction id. If unavailable, fallback to a non-transaction profile.
+        if requested_purpose == "TxProfile" and transaction_id is None:
+            fallback_purpose = str(capabilities.get("default_profile_purpose", "TxDefaultProfile"))
+            if fallback_purpose == "TxProfile":
+                fallback_purpose = next(
+                    (
+                        purpose
+                        for purpose in supported_purposes
+                        if purpose != "TxProfile"
+                    ),
+                    "TxDefaultProfile",
+                )
+            requested_purpose = fallback_purpose
+
         limit_value = float(call.data[ATTR_LIMIT])
         supports_bidirectional = bool(capabilities.get("supports_bidirectional_power_transfer", False))
         if limit_value < 0 and not supports_bidirectional:
@@ -256,7 +275,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             stack_level=int(call.data.get(ATTR_STACK_LEVEL, 1)),
             profile_id=call.data.get(ATTR_PROFILE_ID),
             profile_purpose=requested_purpose,
-            transaction_id=call.data.get(ATTR_TRANSACTION_ID),
+            transaction_id=str(transaction_id) if transaction_id is not None else None,
         )
 
     async def async_handle_clear_charging_profile(call: ServiceCall) -> None:
