@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from homeassistant.components.button import ButtonEntity
@@ -12,7 +13,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .citrine_api import CitrineClient
+from .citrine_api import CitrineApiError, CitrineClient
 from .const import (
     ATTR_DURATION,
     ATTR_ENTRY_ID,
@@ -32,12 +33,12 @@ from .const import (
     DEFAULT_DEFAULT_EVSE_ID,
     DEFAULT_DEFAULT_ID_TAG,
     DOMAIN,
-    SERVICE_CLEAR_CHARGING_PROFILE,
-    SERVICE_SET_CHARGING_PROFILE,
     SERVICE_START_CHARGING,
     SERVICE_STOP_CHARGING,
 )
 from .coordinator import CitrineCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -260,29 +261,82 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
             self.coordinator.get_station_protocol(self._station_id, str(station.get("protocol", "")))
         )
         prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
 
-        service_data = {
-            ATTR_ENTRY_ID: self._entry.entry_id,
-            ATTR_STATION_ID: self._station_id,
-            ATTR_PROTOCOL: protocol,
-            ATTR_LIMIT: float(prefs.get("limit", 7000.0)),
-            ATTR_EVSE_ID: int(prefs.get("evse_id", 0)),
-            ATTR_DURATION: int(prefs.get("duration", 300)),
-            ATTR_STACK_LEVEL: int(prefs.get("stack_level", 1)),
-            ATTR_UNIT: str(prefs.get("unit", "W")),
-            ATTR_PROFILE_PURPOSE: str(prefs.get("profile_purpose", "TxProfile")),
-        }
+        requested_unit = str(prefs.get("unit", "W")).upper()
+        allowed_units = [str(unit).upper() for unit in capabilities.get("allowed_units", [])]
+        if allowed_units and requested_unit not in allowed_units:
+            requested_unit = str(capabilities.get("preferred_unit", allowed_units[0])).upper()
+
+        requested_purpose = str(
+            prefs.get(
+                "profile_purpose",
+                capabilities.get("default_profile_purpose", "TxDefaultProfile"),
+            )
+        )
+        supported_purposes = [str(item) for item in capabilities.get("supported_profile_purposes", [])]
+        if supported_purposes and requested_purpose not in supported_purposes:
+            requested_purpose = str(capabilities.get("default_profile_purpose", supported_purposes[0]))
+
+        transaction_id = (
+            station.get("activeTransactionId")
+            or station.get("currentTransactionId")
+            or station.get("transactionId")
+            or station.get("previousTransactionId")
+        )
+        if requested_purpose == "TxProfile" and transaction_id is None:
+            requested_purpose = str(capabilities.get("default_profile_purpose", "TxDefaultProfile"))
+            if requested_purpose == "TxProfile":
+                requested_purpose = next(
+                    (item for item in supported_purposes if item != "TxProfile"),
+                    "TxDefaultProfile",
+                )
+
+        limit_value = float(prefs.get("limit", 7000.0))
+        supports_bidirectional = bool(capabilities.get("supports_bidirectional_power_transfer", False))
+        if limit_value < 0 and not supports_bidirectional:
+            raise HomeAssistantError(
+                f"Station {self._station_id} does not advertise bidirectional profile support"
+            )
+        min_profile_limit = capabilities.get("min_profile_limit")
+        max_profile_limit = capabilities.get("max_profile_limit")
+        if min_profile_limit is not None:
+            limit_value = max(float(min_profile_limit), limit_value)
+        if max_profile_limit is not None:
+            limit_value = min(float(max_profile_limit), limit_value)
+
         profile_id = prefs.get("profile_id")
-        if profile_id is not None:
-            service_data[ATTR_PROFILE_ID] = int(profile_id)
+        evse_id = int(prefs.get("evse_id", 0))
+        duration = int(prefs.get("duration", 300))
+        stack_level = int(prefs.get("stack_level", 1))
 
         try:
-            await self._hass_instance.services.async_call(
-                DOMAIN,
-                SERVICE_SET_CHARGING_PROFILE,
-                service_data,
-                blocking=True,
+            _LOGGER.warning(
+                "Apply profile requested: station=%s protocol=%s evse=%s limit=%s unit=%s purpose=%s tx=%s",
+                self._station_id,
+                protocol,
+                evse_id,
+                limit_value,
+                requested_unit,
+                requested_purpose,
+                transaction_id,
             )
+
+            await self._client.set_charging_profile(
+                protocol=protocol,
+                station_id=self._station_id,
+                limit=limit_value,
+                unit=requested_unit,
+                evse_id=evse_id,
+                duration=duration,
+                stack_level=stack_level,
+                profile_id=int(profile_id) if profile_id is not None else None,
+                profile_purpose=requested_purpose,
+                transaction_id=str(transaction_id) if transaction_id is not None else None,
+            )
+            await self.coordinator.async_request_refresh()
+        except CitrineApiError as err:
+            raise HomeAssistantError(f"Apply profile command failed: {err}") from err
         except Exception as err:  # noqa: BLE001
             raise HomeAssistantError(f"Apply profile command failed: {err}") from err
 
@@ -310,25 +364,39 @@ class CitrineClearChargingProfileButton(CitrineBaseButton):
             self.coordinator.get_station_protocol(self._station_id, str(station.get("protocol", "")))
         )
         prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        supported_purposes = [str(item) for item in capabilities.get("supported_profile_purposes", [])]
+        requested_purpose = str(
+            prefs.get(
+                "profile_purpose",
+                capabilities.get("default_profile_purpose", "TxDefaultProfile"),
+            )
+        )
+        if supported_purposes and requested_purpose not in supported_purposes:
+            requested_purpose = str(capabilities.get("default_profile_purpose", supported_purposes[0]))
 
-        service_data = {
-            ATTR_ENTRY_ID: self._entry.entry_id,
-            ATTR_STATION_ID: self._station_id,
-            ATTR_PROTOCOL: protocol,
-            ATTR_EVSE_ID: int(prefs.get("evse_id", 0)),
-            ATTR_STACK_LEVEL: int(prefs.get("stack_level", 1)),
-            ATTR_PROFILE_PURPOSE: str(prefs.get("profile_purpose", "TxProfile")),
-        }
         profile_id = prefs.get("profile_id")
-        if profile_id is not None:
-            service_data[ATTR_PROFILE_ID] = int(profile_id)
+        evse_id = int(prefs.get("evse_id", 0))
+        stack_level = int(prefs.get("stack_level", 1))
 
         try:
-            await self._hass_instance.services.async_call(
-                DOMAIN,
-                SERVICE_CLEAR_CHARGING_PROFILE,
-                service_data,
-                blocking=True,
+            _LOGGER.warning(
+                "Clear profile requested: station=%s protocol=%s evse=%s purpose=%s profile_id=%s",
+                self._station_id,
+                protocol,
+                evse_id,
+                requested_purpose,
+                profile_id,
             )
+
+            await self._client.clear_charging_profile(
+                protocol=protocol,
+                station_id=self._station_id,
+                evse_id=evse_id,
+                profile_id=int(profile_id) if profile_id is not None else None,
+                stack_level=stack_level,
+                profile_purpose=requested_purpose,
+            )
+            await self.coordinator.async_request_refresh()
         except Exception as err:  # noqa: BLE001
             raise HomeAssistantError(f"Clear profile command failed: {err}") from err
