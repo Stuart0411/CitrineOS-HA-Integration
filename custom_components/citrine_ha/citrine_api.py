@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
+from datetime import UTC, datetime
 import json
 import logging
 import random
@@ -191,6 +192,7 @@ class CitrineClient:
             }
             paths = ["/ocpp/1.6/smartcharging/setChargingProfile"]
         else:
+            start_schedule = self._iso_utc_now()
             payload = {
                 "evseId": evse_id,
                 "chargingProfile": {
@@ -202,6 +204,7 @@ class CitrineClient:
                         {
                             "id": random.randint(1000, 9999),
                             "duration": duration,
+                            "startSchedule": start_schedule,
                             "chargingRateUnit": normalized_unit,
                             "chargingSchedulePeriod": [
                                 {"startPeriod": 0, "limit": round(limit, 1)}
@@ -341,6 +344,7 @@ class CitrineClient:
 
             paths = ["/ocpp/1.6/smartcharging/setChargingProfile"]
         else:
+            start_schedule = self._iso_utc_now()
             payload_base = {
                 "evseId": evse_id,
                 "chargingProfile": {
@@ -352,6 +356,7 @@ class CitrineClient:
                         {
                             "id": random.randint(1000, 9999),
                             "duration": duration,
+                            "startSchedule": start_schedule,
                             "chargingRateUnit": normalized_unit,
                             "chargingSchedulePeriod": [
                                 {"startPeriod": 0, "limit": round(limit, 1)}
@@ -604,6 +609,28 @@ class CitrineClient:
         response: Any,
     ) -> Any:
         """Raise explicit errors when command payload indicates rejection despite HTTP success."""
+        if isinstance(response, list):
+            if not response:
+                return response
+
+            list_success_values: list[bool] = []
+            for item in response:
+                if isinstance(item, dict) and "success" in item and isinstance(item["success"], bool):
+                    list_success_values.append(item["success"])
+
+            if list_success_values and not all(list_success_values):
+                compact = json.dumps(response, ensure_ascii=True, separators=(",", ":"))
+                _LOGGER.warning(
+                    "Citrine command rejected by success=false list payload: action=%s station=%s response=%s",
+                    action,
+                    station_id,
+                    compact,
+                )
+                raise CitrineApiError(
+                    f"Command {action} was not accepted for station {station_id}: {compact}"
+                )
+            return response
+
         if not isinstance(response, dict):
             return response
 
@@ -691,3 +718,8 @@ class CitrineClient:
 
         _walk(payload, 0)
         return tokens
+
+    @staticmethod
+    def _iso_utc_now() -> str:
+        """Return current UTC timestamp in RFC3339 format expected by OCPP 2.x."""
+        return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
