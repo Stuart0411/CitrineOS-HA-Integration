@@ -232,10 +232,24 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         if requested_purpose and supported_purposes and requested_purpose not in supported_purposes:
             requested_purpose = str(capabilities.get("default_profile_purpose", supported_purposes[0]))
 
+        limit_value = float(call.data[ATTR_LIMIT])
+        supports_bidirectional = bool(capabilities.get("supports_bidirectional_power_transfer", False))
+        if limit_value < 0 and not supports_bidirectional:
+            raise HomeAssistantError(
+                f"Station {station_id} does not advertise bidirectional profile support; negative limits are not allowed"
+            )
+
+        min_profile_limit = capabilities.get("min_profile_limit")
+        max_profile_limit = capabilities.get("max_profile_limit")
+        if min_profile_limit is not None:
+            limit_value = max(float(min_profile_limit), limit_value)
+        if max_profile_limit is not None:
+            limit_value = min(float(max_profile_limit), limit_value)
+
         await client.set_charging_profile(
             protocol=protocol,
             station_id=station_id,
-            limit=float(call.data[ATTR_LIMIT]),
+            limit=limit_value,
             unit=requested_unit,
             evse_id=int(call.data.get(ATTR_EVSE_ID, 0)),
             duration=int(call.data.get(ATTR_DURATION, 300)),

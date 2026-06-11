@@ -42,6 +42,10 @@ This repository now contains a scaffolded Home Assistant custom component for Ci
 - `citrine_ha.clear_charging_profile`
 - `citrine_ha.sync_discovery_now`
 
+Bidirectional note:
+- `set_charging_profile` supports negative `limit` values for stations that advertise bidirectional profile support in the integration capability cache (typically OCPP 2.x).
+- Stations mapped as non-bidirectional (for example OCPP 1.6 by default) will reject negative profile limits with a clear error.
+
 4. Protocol-aware API calls
 - OCPP 2.0.1 and OCPP 1.6 start/stop mappings
 - OCPP 2.0.1 and OCPP 1.6 smart charging profile mappings for limits

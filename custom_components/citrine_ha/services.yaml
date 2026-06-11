@@ -119,7 +119,7 @@ set_group_limit:
       required: true
       selector:
         number:
-          min: 0
+          min: -500000
           max: 500000
     unit:
       required: false

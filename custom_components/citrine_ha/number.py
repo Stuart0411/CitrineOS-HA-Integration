@@ -203,10 +203,18 @@ class CitrineProfilePreferenceNumber(CoordinatorEntity[CitrineCoordinator], Numb
 
 class CitrineStationProfileLimitNumber(CitrineProfilePreferenceNumber):
     _attr_icon = "mdi:gauge"
-    _attr_native_min_value = 0
-    _attr_native_max_value = 500000
     _attr_native_step = 100
     _attr_native_unit_of_measurement = UnitOfPower.WATT
+
+    @property
+    def native_min_value(self) -> float:
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        return float(capabilities.get("min_profile_limit", -500000.0))
+
+    @property
+    def native_max_value(self) -> float:
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        return float(capabilities.get("max_profile_limit", 500000.0))
 
     def __init__(self, coordinator: CitrineCoordinator, entry: ConfigEntry, station: dict[str, Any]) -> None:
         super().__init__(

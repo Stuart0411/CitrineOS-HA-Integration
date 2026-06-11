@@ -365,8 +365,11 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "supports_remote_stop": True,
                 "supports_set_charging_profile": True,
                 "supports_clear_charging_profile": True,
+                "supports_bidirectional_power_transfer": False,
                 "allowed_units": ["A", "W"],
                 "preferred_unit": "A",
+                "min_profile_limit": 0.0,
+                "max_profile_limit": 500000.0,
                 "supported_profile_purposes": [
                     "ChargePointMaxProfile",
                     "TxDefaultProfile",
@@ -382,8 +385,11 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "supports_remote_stop": True,
             "supports_set_charging_profile": True,
             "supports_clear_charging_profile": True,
+            "supports_bidirectional_power_transfer": True,
             "allowed_units": ["W", "A"],
             "preferred_unit": "W",
+            "min_profile_limit": -500000.0,
+            "max_profile_limit": 500000.0,
             "supported_profile_purposes": [
                 "ChargingStationMaxProfile",
                 "TxDefaultProfile",
