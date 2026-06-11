@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 import json
 import logging
 import random
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -295,6 +296,27 @@ class CitrineClient:
         normalized_unit = unit.upper()
         normalized_purpose = str(profile_purpose or "TxProfile").strip()
         purpose_key = normalized_purpose.lower()
+
+        # Some OCPP 2.x firmware crashes/drops websocket when TxProfile carries UUID transaction ids.
+        # Downgrade to TxDefaultProfile in that case to keep EVSE online while still applying a limit.
+        if (
+            protocol != "ocpp1.6"
+            and purpose_key == "txprofile"
+            and transaction_id is not None
+            and re.fullmatch(
+                r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}",
+                str(transaction_id),
+            )
+        ):
+            _LOGGER.warning(
+                "TxProfile compatibility fallback: station=%s protocol=%s tx_id=%s downgraded_to=TxDefaultProfile",
+                station_id,
+                protocol,
+                transaction_id,
+            )
+            normalized_purpose = "TxDefaultProfile"
+            purpose_key = "txdefaultprofile"
+            transaction_id = None
 
         # Station/charge-point max profiles should be station scoped.
         if purpose_key in {"chargingstationmaxprofile", "chargepointmaxprofile"}:
