@@ -233,7 +233,7 @@ class CitrineStationProfileLimitNumber(CitrineProfilePreferenceNumber):
 
 class CitrineStationProfileDurationNumber(CitrineProfilePreferenceNumber):
     _attr_icon = "mdi:timer-cog"
-    _attr_native_min_value = 1
+    _attr_native_min_value = 0
     _attr_native_max_value = 86400
     _attr_native_step = 1
     _attr_native_unit_of_measurement = "s"

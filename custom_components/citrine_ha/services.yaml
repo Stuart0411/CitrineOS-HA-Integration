@@ -96,7 +96,7 @@ set_station_limit:
       required: false
       selector:
         number:
-          min: 1
+          min: 0
           max: 86400
 
 set_group_limit:
@@ -132,7 +132,7 @@ set_group_limit:
       required: false
       selector:
         number:
-          min: 1
+          min: 0
           max: 86400
 
 set_charging_profile:
@@ -175,7 +175,7 @@ set_charging_profile:
       required: false
       selector:
         number:
-          min: 1
+          min: 0
           max: 86400
     transaction_id:
       required: false

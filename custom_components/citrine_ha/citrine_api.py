@@ -175,6 +175,15 @@ class CitrineClient:
         normalized_unit = unit.upper()
 
         if protocol == "ocpp1.6":
+            schedule: dict[str, Any] = {
+                "chargingRateUnit": normalized_unit,
+                "chargingSchedulePeriod": [
+                    {"startPeriod": 0, "limit": round(limit, 1)}
+                ],
+            }
+            if duration > 0:
+                schedule["duration"] = duration
+
             payload = {
                 "connectorId": evse_id,
                 "csChargingProfiles": {
@@ -182,18 +191,22 @@ class CitrineClient:
                     "stackLevel": 1,
                     "chargingProfilePurpose": "ChargePointMaxProfile",
                     "chargingProfileKind": "Absolute",
-                    "chargingSchedule": {
-                        "duration": duration,
-                        "chargingRateUnit": normalized_unit,
-                        "chargingSchedulePeriod": [
-                            {"startPeriod": 0, "limit": round(limit, 1)}
-                        ],
-                    },
+                    "chargingSchedule": schedule,
                 },
             }
             paths = ["/ocpp/1.6/smartcharging/setChargingProfile"]
         else:
             start_schedule = self._iso_utc_now()
+            schedule = {
+                "id": random.randint(1000, 9999),
+                "chargingRateUnit": normalized_unit,
+                "chargingSchedulePeriod": [
+                    {"startPeriod": 0, "limit": round(limit, 1)}
+                ],
+            }
+            if duration > 0:
+                schedule["duration"] = duration
+
             payload = {
                 "evseId": evse_id,
                 "chargingProfile": {
@@ -203,13 +216,8 @@ class CitrineClient:
                     "chargingProfileKind": "Absolute",
                     "chargingSchedule": [
                         {
-                            "id": random.randint(1000, 9999),
-                            "duration": duration,
+                            **schedule,
                             "startSchedule": start_schedule,
-                            "chargingRateUnit": normalized_unit,
-                            "chargingSchedulePeriod": [
-                                {"startPeriod": 0, "limit": round(limit, 1)}
-                            ],
                         }
                     ],
                 },
@@ -325,6 +333,15 @@ class CitrineClient:
         payload_variants: list[dict[str, Any]] = []
 
         if protocol == "ocpp1.6":
+            schedule: dict[str, Any] = {
+                "chargingRateUnit": normalized_unit,
+                "chargingSchedulePeriod": [
+                    {"startPeriod": 0, "limit": round(limit, 1)}
+                ],
+            }
+            if duration > 0:
+                schedule["duration"] = duration
+
             payload_base: dict[str, Any] = {
                 "connectorId": evse_id,
                 "csChargingProfiles": {
@@ -332,13 +349,7 @@ class CitrineClient:
                     "stackLevel": stack_level,
                     "chargingProfilePurpose": normalized_purpose,
                     "chargingProfileKind": "Absolute",
-                    "chargingSchedule": {
-                        "duration": duration,
-                        "chargingRateUnit": normalized_unit,
-                        "chargingSchedulePeriod": [
-                            {"startPeriod": 0, "limit": round(limit, 1)}
-                        ],
-                    },
+                    "chargingSchedule": schedule,
                 },
             }
             payload_variants.append(payload_base)
@@ -369,6 +380,16 @@ class CitrineClient:
             start_schedule = self._iso_utc_now()
             txprofile_relative = purpose_key == "txprofile"
             default_kind = "Relative" if txprofile_relative else "Absolute"
+            schedule: dict[str, Any] = {
+                "id": random.randint(1000, 9999),
+                "chargingRateUnit": normalized_unit,
+                "chargingSchedulePeriod": [
+                    {"startPeriod": 0, "limit": round(limit, 1)}
+                ],
+            }
+            if duration > 0:
+                schedule["duration"] = duration
+
             payload_base = {
                 "evseId": evse_id,
                 "chargingProfile": {
@@ -376,16 +397,7 @@ class CitrineClient:
                     "stackLevel": stack_level,
                     "chargingProfilePurpose": normalized_purpose,
                     "chargingProfileKind": default_kind,
-                    "chargingSchedule": [
-                        {
-                            "id": random.randint(1000, 9999),
-                            "duration": duration,
-                            "chargingRateUnit": normalized_unit,
-                            "chargingSchedulePeriod": [
-                                {"startPeriod": 0, "limit": round(limit, 1)}
-                            ],
-                        }
-                    ],
+                    "chargingSchedule": [schedule],
                 },
             }
             # startSchedule is mandatory for Absolute/Recurring, but not for Relative.
