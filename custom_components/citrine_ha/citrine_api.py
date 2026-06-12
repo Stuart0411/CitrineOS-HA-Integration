@@ -298,6 +298,7 @@ class CitrineClient:
         profile_id: int | None = None,
         profile_purpose: str | None = None,
         transaction_id: str | None = None,
+        txprofile_compatibility_fallback: bool = True,
     ) -> Any:
         """Apply an explicit charging profile with OCPP-specific structure."""
         protocol = self.normalize_protocol(protocol)
@@ -308,6 +309,8 @@ class CitrineClient:
         # Some OCPP 2.x firmware crashes/drops websocket when TxProfile carries UUID transaction ids.
         # Downgrade to TxDefaultProfile in that case to keep EVSE online while still applying a limit.
         if (
+            txprofile_compatibility_fallback
+            and
             protocol != "ocpp1.6"
             and purpose_key == "txprofile"
             and transaction_id is not None

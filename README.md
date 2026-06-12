@@ -46,6 +46,8 @@ Bidirectional note:
 - `set_charging_profile` supports negative `limit` values for stations that advertise bidirectional profile support in the integration capability cache (typically OCPP 2.x).
 - Stations mapped as non-bidirectional (for example OCPP 1.6 by default) will reject negative profile limits with a clear error.
 - Set `duration` to `0` for an indefinite profile (the integration omits duration in the OCPP schedule payload).
+- If a charger applies the profile but drives power in the opposite sign direction, set `Profile Sign Mode` to `invert_negative` for that station.
+- `Profile Tx Mode` controls TxProfile behavior: use `safe_fallback` for charger compatibility fallbacks, or `strict_txprofile` to keep `TxProfile` unchanged.
 
 4. Protocol-aware API calls
 - OCPP 2.0.1 and OCPP 1.6 start/stop mappings

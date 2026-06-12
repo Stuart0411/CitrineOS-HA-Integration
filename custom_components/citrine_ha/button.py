@@ -284,7 +284,12 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
             or station.get("transactionId")
             or station.get("previousTransactionId")
         )
+        tx_mode = str(prefs.get("profile_tx_mode", "safe_fallback"))
         if requested_purpose == "TxProfile" and transaction_id is None:
+            if tx_mode == "strict_txprofile":
+                raise HomeAssistantError(
+                    "TxProfile strict mode requires an active transaction id, but no transaction is available"
+                )
             requested_purpose = str(capabilities.get("default_profile_purpose", "TxDefaultProfile"))
             if requested_purpose == "TxProfile":
                 requested_purpose = next(
@@ -296,6 +301,10 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
         tx_for_command = str(transaction_id) if (transaction_id is not None and purpose_key == "txprofile") else None
 
         limit_value = float(prefs.get("limit", 7000.0))
+        sign_mode = str(prefs.get("profile_sign_mode", "normal"))
+        if sign_mode == "invert_negative" and limit_value < 0:
+            limit_value = abs(limit_value)
+
         supports_bidirectional = bool(capabilities.get("supports_bidirectional_power_transfer", False))
         if limit_value < 0 and not supports_bidirectional:
             raise HomeAssistantError(
@@ -315,7 +324,7 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
 
         try:
             _LOGGER.warning(
-                "Apply profile requested: station=%s protocol=%s evse=%s limit=%s unit=%s purpose=%s tx=%s",
+                "Apply profile requested: station=%s protocol=%s evse=%s limit=%s unit=%s purpose=%s tx=%s sign_mode=%s tx_mode=%s",
                 self._station_id,
                 protocol,
                 evse_id,
@@ -323,6 +332,8 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
                 requested_unit,
                 requested_purpose,
                 tx_for_command,
+                sign_mode,
+                tx_mode,
             )
 
             await self._client.set_charging_profile(
@@ -336,6 +347,7 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
                 profile_id=int(profile_id) if profile_id is not None else None,
                 profile_purpose=requested_purpose,
                 transaction_id=tx_for_command,
+                txprofile_compatibility_fallback=(tx_mode != "strict_txprofile"),
             )
             await self.coordinator.async_request_refresh()
         except CitrineApiError as err:

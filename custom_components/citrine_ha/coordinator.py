@@ -122,6 +122,8 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "stack_level": DEFAULT_PROFILE_STACK_LEVEL,
             "profile_id": None,
             "profile_purpose": DEFAULT_PROFILE_PURPOSE,
+            "profile_sign_mode": "normal",
+            "profile_tx_mode": "safe_fallback",
         }
         if station_key not in self._profile_prefs:
             self._profile_prefs[station_key] = dict(defaults)
@@ -343,6 +345,8 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         "default_profile_purpose",
                         DEFAULT_PROFILE_PURPOSE,
                     ),
+                    "profile_sign_mode": "normal",
+                    "profile_tx_mode": "safe_fallback",
                 }
             else:
                 # Migrate old defaults that used TxProfile by default, which can fail without a transaction.

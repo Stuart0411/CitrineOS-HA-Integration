@@ -35,6 +35,8 @@ async def async_setup_entry(
             known_ids.add(station_id)
             entities.append(CitrineStationProfileUnitSelect(coordinator, entry, station))
             entities.append(CitrineStationProfilePurposeSelect(coordinator, entry, station))
+            entities.append(CitrineStationProfileSignModeSelect(coordinator, entry, station))
+            entities.append(CitrineStationProfileTxModeSelect(coordinator, entry, station))
         return entities
 
     async_add_entities(_build_entities())
@@ -155,3 +157,53 @@ class CitrineStationProfilePurposeSelect(CitrineProfileSelectBase):
             ["TxProfile", "TxDefaultProfile"],
         )
         return [str(option) for option in options]
+
+
+class CitrineStationProfileSignModeSelect(CitrineProfileSelectBase):
+    """Select profile sign compatibility behavior for charger-specific quirks."""
+
+    _attr_icon = "mdi:plus-minus-variant"
+
+    def __init__(
+        self,
+        coordinator: CitrineCoordinator,
+        entry: ConfigEntry,
+        station: dict[str, Any],
+    ) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            station,
+            key="profile_sign_mode",
+            name_suffix="Profile Sign Mode",
+            unique_suffix="profile_sign_mode",
+        )
+
+    @property
+    def options(self) -> list[str]:
+        return ["normal", "invert_negative"]
+
+
+class CitrineStationProfileTxModeSelect(CitrineProfileSelectBase):
+    """Select TxProfile compatibility policy for this station."""
+
+    _attr_icon = "mdi:shield-sync"
+
+    def __init__(
+        self,
+        coordinator: CitrineCoordinator,
+        entry: ConfigEntry,
+        station: dict[str, Any],
+    ) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            station,
+            key="profile_tx_mode",
+            name_suffix="Profile Tx Mode",
+            unique_suffix="profile_tx_mode",
+        )
+
+    @property
+    def options(self) -> list[str]:
+        return ["safe_fallback", "strict_txprofile"]
