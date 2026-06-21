@@ -67,4 +67,7 @@ ATTR_GROUP_ID = "group_id"
 ATTR_STATION_IDS = "station_ids"
 ATTR_PROFILE_ID = "profile_id"
 ATTR_PROFILE_PURPOSE = "profile_purpose"
+ATTR_PROFILE_KIND = "profile_kind"
 ATTR_STACK_LEVEL = "stack_level"
+
+DEFAULT_PROFILE_KIND = "Absolute"

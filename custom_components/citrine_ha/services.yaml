@@ -198,6 +198,14 @@ set_charging_profile:
       example: TxProfile
       selector:
         text:
+    profile_kind:
+      required: false
+      example: Absolute
+      selector:
+        select:
+          options:
+            - Absolute
+            - Relative
 
 clear_charging_profile:
   name: Clear charging profile

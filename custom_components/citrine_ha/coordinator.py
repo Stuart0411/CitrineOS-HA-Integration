@@ -17,6 +17,7 @@ from .const import (
     CONF_TENANT_ID,
     DEFAULT_HASURA_QUERY,
     DEFAULT_PROFILE_DURATION,
+    DEFAULT_PROFILE_KIND,
     DEFAULT_PROFILE_LIMIT,
     DEFAULT_PROFILE_PURPOSE,
     DEFAULT_PROFILE_STACK_LEVEL,
@@ -122,6 +123,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "stack_level": DEFAULT_PROFILE_STACK_LEVEL,
             "profile_id": None,
             "profile_purpose": DEFAULT_PROFILE_PURPOSE,
+            "profile_kind": DEFAULT_PROFILE_KIND,
             "profile_sign_mode": "normal",
             "profile_tx_mode": "safe_fallback",
         }
@@ -345,6 +347,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         "default_profile_purpose",
                         DEFAULT_PROFILE_PURPOSE,
                     ),
+                    "profile_kind": capabilities.get("default_profile_kind", DEFAULT_PROFILE_KIND),
                     "profile_sign_mode": "normal",
                     "profile_tx_mode": "safe_fallback",
                 }
@@ -388,6 +391,8 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "TxProfile",
                 ],
                 "default_profile_purpose": "ChargePointMaxProfile",
+                "supported_profile_kinds": ["Absolute"],
+                "default_profile_kind": "Absolute",
                 "supports_transaction_profile": True,
                 "connector_count": connector_count,
             }
@@ -408,6 +413,8 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "TxProfile",
             ],
             "default_profile_purpose": "ChargingStationMaxProfile",
+            "supported_profile_kinds": ["Absolute", "Relative"],
+            "default_profile_kind": "Absolute",
             "supports_transaction_profile": True,
             "connector_count": connector_count,
         }

@@ -35,6 +35,7 @@ async def async_setup_entry(
             known_ids.add(station_id)
             entities.append(CitrineStationProfileUnitSelect(coordinator, entry, station))
             entities.append(CitrineStationProfilePurposeSelect(coordinator, entry, station))
+            entities.append(CitrineStationProfileKindSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileSignModeSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileTxModeSelect(coordinator, entry, station))
         return entities
@@ -157,6 +158,35 @@ class CitrineStationProfilePurposeSelect(CitrineProfileSelectBase):
             ["TxProfile", "TxDefaultProfile"],
         )
         return [str(option) for option in options]
+
+
+class CitrineStationProfileKindSelect(CitrineProfileSelectBase):
+    """Select charging profile kind (Absolute or Relative)."""
+
+    _attr_icon = "mdi:vector-polyline"
+
+    def __init__(
+        self,
+        coordinator: CitrineCoordinator,
+        entry: ConfigEntry,
+        station: dict[str, Any],
+    ) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            station,
+            key="profile_kind",
+            name_suffix="Profile Kind",
+            unique_suffix="profile_kind",
+        )
+
+    @property
+    def options(self) -> list[str]:
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        options = capabilities.get("supported_profile_kinds", ["Absolute", "Relative"])
+        normalized = [str(option).capitalize() for option in options]
+        # Keep options stable and unique in case capabilities contain duplicates.
+        return list(dict.fromkeys(normalized))
 
 
 class CitrineStationProfileSignModeSelect(CitrineProfileSelectBase):

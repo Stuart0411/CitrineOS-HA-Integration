@@ -21,6 +21,7 @@ from .const import (
     ATTR_ID_TAG,
     ATTR_LIMIT,
     ATTR_PROFILE_ID,
+    ATTR_PROFILE_KIND,
     ATTR_PROFILE_PURPOSE,
     ATTR_PROTOCOL,
     ATTR_STACK_LEVEL,
@@ -232,6 +233,13 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         if requested_purpose and supported_purposes and requested_purpose not in supported_purposes:
             requested_purpose = str(capabilities.get("default_profile_purpose", supported_purposes[0]))
 
+        requested_kind = call.data.get(ATTR_PROFILE_KIND)
+        if requested_kind is not None:
+            requested_kind = str(requested_kind).strip().capitalize()
+        supported_kinds = capabilities.get("supported_profile_kinds", [])
+        if requested_kind and supported_kinds and requested_kind not in supported_kinds:
+            requested_kind = str(capabilities.get("default_profile_kind", supported_kinds[0]))
+
         transaction_id = call.data.get(ATTR_TRANSACTION_ID) or _station_current_transaction_id(
             coordinator,
             station_id,
@@ -275,6 +283,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             stack_level=int(call.data.get(ATTR_STACK_LEVEL, 1)),
             profile_id=call.data.get(ATTR_PROFILE_ID),
             profile_purpose=requested_purpose,
+            profile_kind=requested_kind,
             transaction_id=str(transaction_id) if transaction_id is not None else None,
         )
 
@@ -400,6 +409,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 vol.Optional(ATTR_STACK_LEVEL, default=1): int,
                 vol.Optional(ATTR_PROFILE_ID): int,
                 vol.Optional(ATTR_PROFILE_PURPOSE): str,
+                vol.Optional(ATTR_PROFILE_KIND): str,
             }
         ),
     )

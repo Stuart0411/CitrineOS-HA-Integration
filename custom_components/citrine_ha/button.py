@@ -274,9 +274,18 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
                 capabilities.get("default_profile_purpose", "TxDefaultProfile"),
             )
         )
+        requested_kind = str(
+            prefs.get(
+                "profile_kind",
+                capabilities.get("default_profile_kind", "Absolute"),
+            )
+        )
         supported_purposes = [str(item) for item in capabilities.get("supported_profile_purposes", [])]
+        supported_kinds = [str(item) for item in capabilities.get("supported_profile_kinds", [])]
         if supported_purposes and requested_purpose not in supported_purposes:
             requested_purpose = str(capabilities.get("default_profile_purpose", supported_purposes[0]))
+        if supported_kinds and requested_kind not in supported_kinds:
+            requested_kind = str(capabilities.get("default_profile_kind", supported_kinds[0]))
 
         transaction_id = (
             station.get("activeTransactionId")
@@ -324,13 +333,14 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
 
         try:
             _LOGGER.warning(
-                "Apply profile requested: station=%s protocol=%s evse=%s limit=%s unit=%s purpose=%s tx=%s sign_mode=%s tx_mode=%s",
+                "Apply profile requested: station=%s protocol=%s evse=%s limit=%s unit=%s purpose=%s kind=%s tx=%s sign_mode=%s tx_mode=%s",
                 self._station_id,
                 protocol,
                 evse_id,
                 limit_value,
                 requested_unit,
                 requested_purpose,
+                requested_kind,
                 tx_for_command,
                 sign_mode,
                 tx_mode,
@@ -346,6 +356,7 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
                 stack_level=stack_level,
                 profile_id=int(profile_id) if profile_id is not None else None,
                 profile_purpose=requested_purpose,
+                profile_kind=requested_kind,
                 transaction_id=tx_for_command,
                 txprofile_compatibility_fallback=(tx_mode != "strict_txprofile"),
             )

@@ -297,6 +297,7 @@ class CitrineClient:
         stack_level: int = 1,
         profile_id: int | None = None,
         profile_purpose: str | None = None,
+        profile_kind: str | None = None,
         transaction_id: str | None = None,
         txprofile_compatibility_fallback: bool = True,
     ) -> Any:
@@ -305,6 +306,9 @@ class CitrineClient:
         normalized_unit = unit.upper()
         normalized_purpose = str(profile_purpose or "TxProfile").strip()
         purpose_key = normalized_purpose.lower()
+        requested_kind = str(profile_kind or "").strip().capitalize()
+        if requested_kind not in {"Absolute", "Relative"}:
+            requested_kind = ""
 
         # Some OCPP 2.x firmware crashes/drops websocket when TxProfile carries UUID transaction ids.
         # Downgrade to TxDefaultProfile in that case to keep EVSE online while still applying a limit.
@@ -351,6 +355,7 @@ class CitrineClient:
                     "chargingProfileId": profile_id or random.randint(1000, 9999),
                     "stackLevel": stack_level,
                     "chargingProfilePurpose": normalized_purpose,
+                    # OCPP 1.6 profile kind support is effectively Absolute for this payload shape.
                     "chargingProfileKind": "Absolute",
                     "chargingSchedule": schedule,
                 },
@@ -383,6 +388,7 @@ class CitrineClient:
             start_schedule = self._iso_utc_now()
             txprofile_relative = purpose_key == "txprofile"
             default_kind = "Relative" if txprofile_relative else "Absolute"
+            effective_kind = requested_kind or default_kind
             schedule: dict[str, Any] = {
                 "id": random.randint(1000, 9999),
                 "chargingRateUnit": normalized_unit,
@@ -399,12 +405,12 @@ class CitrineClient:
                     "id": profile_id or random.randint(1000, 9999),
                     "stackLevel": stack_level,
                     "chargingProfilePurpose": normalized_purpose,
-                    "chargingProfileKind": default_kind,
+                    "chargingProfileKind": effective_kind,
                     "chargingSchedule": [schedule],
                 },
             }
             # startSchedule is mandatory for Absolute/Recurring, but not for Relative.
-            if default_kind in {"Absolute", "Recurring"}:
+            if effective_kind in {"Absolute", "Recurring"}:
                 payload_base["chargingProfile"]["chargingSchedule"][0]["startSchedule"] = start_schedule
             payload_variants.append(payload_base)
 
@@ -441,6 +447,38 @@ class CitrineClient:
                 payload_absolute_both_tx["chargingProfile"]["chargingProfileKind"] = "Absolute"
                 payload_absolute_both_tx["chargingProfile"]["chargingSchedule"][0]["startSchedule"] = start_schedule
                 payload_variants.append(payload_absolute_both_tx)
+
+            # Additional interoperability fallbacks for strict validator implementations.
+            extra_variants: list[dict[str, Any]] = []
+            for variant in payload_variants:
+                cp = variant.get("chargingProfile", {}) if isinstance(variant, dict) else {}
+                schedules = cp.get("chargingSchedule", []) if isinstance(cp, dict) else []
+                if not schedules or not isinstance(schedules[0], dict):
+                    continue
+
+                # Some chargers require startSchedule even for Relative profiles.
+                if cp.get("chargingProfileKind") == "Relative" and "startSchedule" not in schedules[0]:
+                    with_start_schedule = deepcopy(variant)
+                    with_start_schedule["chargingProfile"]["chargingSchedule"][0]["startSchedule"] = start_schedule
+                    extra_variants.append(with_start_schedule)
+
+                # Some chargers only accept A as chargingRateUnit for smart charging payloads.
+                if str(schedules[0].get("chargingRateUnit", "")).upper() == "W":
+                    with_amp_unit = deepcopy(variant)
+                    with_amp_unit["chargingProfile"]["chargingSchedule"][0]["chargingRateUnit"] = "A"
+                    extra_variants.append(with_amp_unit)
+
+                # For station- or default-scope profiles, retry at station scope (evseId=0).
+                if (
+                    variant.get("evseId") not in (None, 0)
+                    and str(cp.get("chargingProfilePurpose", "")).lower()
+                    in {"txdefaultprofile", "chargingstationmaxprofile"}
+                ):
+                    with_station_scope = deepcopy(variant)
+                    with_station_scope["evseId"] = 0
+                    extra_variants.append(with_station_scope)
+
+            payload_variants.extend(extra_variants)
 
             paths = [
                 "/ocpp/2.0.1/smartcharging/setChargingProfile",
