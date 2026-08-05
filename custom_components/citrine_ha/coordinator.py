@@ -96,6 +96,16 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             connectors=connectors,
             transactions=transactions,
         )
+        if not merged_stations and self.data and isinstance(self.data.get("stations"), list):
+            previous_stations = [
+                item for item in self.data.get("stations", []) if isinstance(item, dict)
+            ]
+            if previous_stations:
+                _LOGGER.warning(
+                    "Discovery returned zero stations; retaining %s previously discovered stations",
+                    len(previous_stations),
+                )
+                merged_stations = previous_stations
         self._refresh_station_caches(merged_stations)
 
         return {

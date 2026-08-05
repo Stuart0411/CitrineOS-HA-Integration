@@ -91,8 +91,8 @@ class CitrineStationLimitNumber(CoordinatorEntity[CitrineCoordinator], NumberEnt
         self._client = client
         self._entry = entry
         self._station_id = str(station["id"])
-        # Keep legacy unique_id suffix for registry compatibility.
-        self._attr_unique_id = f"{entry.entry_id}_{self._station_id}_max_limit"
+        # Keep station-stable legacy unique_id for registry compatibility.
+        self._attr_unique_id = f"{self._station_id}_max_limit"
         self._attr_name = f"{self._station_id} Max Limit"
         self._value = 0.0
 
@@ -172,7 +172,7 @@ class CitrineProfilePreferenceNumber(CoordinatorEntity[CitrineCoordinator], Numb
         self._entry = entry
         self._station_id = str(station["id"])
         self._key = key
-        self._attr_unique_id = f"{entry.entry_id}_{self._station_id}_{unique_suffix}"
+        self._attr_unique_id = f"{self._station_id}_{unique_suffix}"
         self._attr_name = f"{self._station_id} {name_suffix}"
 
     @property
