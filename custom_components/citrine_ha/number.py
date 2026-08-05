@@ -26,6 +26,7 @@ from .const import (
     ATTR_UNIT,
     DEFAULT_PROFILE_DURATION,
     DEFAULT_PROFILE_LIMIT,
+    DEFAULT_PROFILE_SETPOINT,
     DEFAULT_PROFILE_STACK_LEVEL,
     DEFAULT_PROFILE_UNIT,
     SERVICE_SET_STATION_LIMIT,
@@ -54,6 +55,7 @@ async def async_setup_entry(
             known_ids.add(station_id)
             entities.append(CitrineStationLimitNumber(coordinator, client, entry, station))
             entities.append(CitrineStationProfileLimitNumber(coordinator, entry, station))
+            entities.append(CitrineStationProfileSetpointNumber(coordinator, entry, station))
             entities.append(CitrineStationProfileDurationNumber(coordinator, entry, station))
             entities.append(CitrineStationProfileEvseNumber(coordinator, entry, station))
             entities.append(CitrineStationProfileStackLevelNumber(coordinator, entry, station))
@@ -228,6 +230,39 @@ class CitrineStationProfileLimitNumber(CitrineProfilePreferenceNumber):
         self.coordinator.update_station_profile_preferences(
             self._station_id,
             limit=self.coordinator.get_station_profile_preferences(self._station_id).get("limit", DEFAULT_PROFILE_LIMIT),
+        )
+
+
+class CitrineStationProfileSetpointNumber(CitrineProfilePreferenceNumber):
+    _attr_icon = "mdi:target"
+    _attr_native_step = 100
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+
+    @property
+    def native_min_value(self) -> float:
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        return float(capabilities.get("min_profile_limit", -500000.0))
+
+    @property
+    def native_max_value(self) -> float:
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        return float(capabilities.get("max_profile_limit", 500000.0))
+
+    def __init__(self, coordinator: CitrineCoordinator, entry: ConfigEntry, station: dict[str, Any]) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            station,
+            key="setpoint",
+            name_suffix="Profile Setpoint",
+            unique_suffix="profile_setpoint",
+        )
+        self.coordinator.update_station_profile_preferences(
+            self._station_id,
+            setpoint=self.coordinator.get_station_profile_preferences(self._station_id).get(
+                "setpoint",
+                DEFAULT_PROFILE_SETPOINT,
+            ),
         )
 
 

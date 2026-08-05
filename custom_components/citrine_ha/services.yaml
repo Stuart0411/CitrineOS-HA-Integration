@@ -156,7 +156,13 @@ set_charging_profile:
       required: true
       selector:
         number:
-          min: 0
+          min: -500000
+          max: 500000
+    setpoint:
+      required: false
+      selector:
+        number:
+          min: -500000
           max: 500000
     unit:
       required: false
@@ -206,6 +212,11 @@ set_charging_profile:
           options:
             - Absolute
             - Relative
+            - Dynamic
+    profile_periods:
+      required: false
+      selector:
+        object:
 
 clear_charging_profile:
   name: Clear charging profile

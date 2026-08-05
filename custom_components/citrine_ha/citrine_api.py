@@ -53,6 +53,8 @@ class CitrineClient:
         value = str(protocol).strip().lower().replace(" ", "")
         if value in {"1.6", "ocpp1.6", "ocpp16", "ocpp-1.6"}:
             return "ocpp1.6"
+        if value in {"2.1", "ocpp2.1", "ocpp21", "ocpp-2.1"}:
+            return "ocpp2.1"
         if value in {"2.0", "2.0.1", "ocpp2.0", "ocpp2.0.1", "ocpp201", "ocpp-2.0.1"}:
             return "ocpp2.0.1"
         return "ocpp2.0.1"
@@ -85,10 +87,7 @@ class CitrineClient:
             }
             if evse_id is not None:
                 payload["evseId"] = evse_id
-            paths = [
-                "/ocpp/2.0.1/evdriver/requestStartTransaction",
-                "/ocpp/2.0/evdriver/requestStartTransaction",
-            ]
+            paths = self._ocpp2_paths(protocol, "evdriver/requestStartTransaction")
 
         params = self._identifier_params(station_id)
         response = await self._request_with_fallback_paths(
@@ -122,10 +121,7 @@ class CitrineClient:
             paths = ["/ocpp/1.6/evdriver/remoteStopTransaction"]
         else:
             payload = {"transactionId": str(transaction_id)}
-            paths = [
-                "/ocpp/2.0.1/evdriver/requestStopTransaction",
-                "/ocpp/2.0/evdriver/requestStopTransaction",
-            ]
+            paths = self._ocpp2_paths(protocol, "evdriver/requestStopTransaction")
 
         params = self._identifier_params(station_id)
         try:
@@ -222,10 +218,7 @@ class CitrineClient:
                     ],
                 },
             }
-            paths = [
-                "/ocpp/2.0.1/smartcharging/setChargingProfile",
-                "/ocpp/2.0/smartcharging/setChargingProfile",
-            ]
+            paths = self._ocpp2_paths(protocol, "smartcharging/setChargingProfile")
 
         params = self._identifier_params(station_id)
         try:
@@ -291,6 +284,7 @@ class CitrineClient:
         protocol: str,
         station_id: str,
         limit: float,
+        setpoint: float | None = None,
         unit: str = "W",
         evse_id: int = 0,
         duration: int = 300,
@@ -298,6 +292,7 @@ class CitrineClient:
         profile_id: int | None = None,
         profile_purpose: str | None = None,
         profile_kind: str | None = None,
+        profile_periods: list[dict[str, Any]] | None = None,
         transaction_id: str | None = None,
         txprofile_compatibility_fallback: bool = True,
     ) -> Any:
@@ -307,7 +302,7 @@ class CitrineClient:
         normalized_purpose = str(profile_purpose or "TxProfile").strip()
         purpose_key = normalized_purpose.lower()
         requested_kind = str(profile_kind or "").strip().capitalize()
-        if requested_kind not in {"Absolute", "Relative"}:
+        if requested_kind not in {"Absolute", "Relative", "Dynamic"}:
             requested_kind = ""
 
         # Some OCPP 2.x firmware crashes/drops websocket when TxProfile carries UUID transaction ids.
@@ -388,13 +383,22 @@ class CitrineClient:
             start_schedule = self._iso_utc_now()
             txprofile_relative = purpose_key == "txprofile"
             default_kind = "Relative" if txprofile_relative else "Absolute"
+            if protocol == "ocpp2.1" and not txprofile_relative:
+                default_kind = "Dynamic"
             effective_kind = requested_kind or default_kind
+            if effective_kind == "Dynamic" and protocol != "ocpp2.1":
+                # Dynamic profile kind is OCPP 2.1-specific. Fallback for mixed deployments.
+                effective_kind = "Absolute"
+
+            schedule_periods_payload = self._build_profile_periods(
+                limit=limit,
+                setpoint=setpoint,
+                schedule_periods=profile_periods,
+            )
             schedule: dict[str, Any] = {
                 "id": random.randint(1000, 9999),
                 "chargingRateUnit": normalized_unit,
-                "chargingSchedulePeriod": [
-                    {"startPeriod": 0, "limit": round(limit, 1)}
-                ],
+                "chargingSchedulePeriod": schedule_periods_payload,
             }
             if duration > 0:
                 schedule["duration"] = duration
@@ -457,7 +461,7 @@ class CitrineClient:
                     continue
 
                 # Some chargers require startSchedule even for Relative profiles.
-                if cp.get("chargingProfileKind") == "Relative" and "startSchedule" not in schedules[0]:
+                if cp.get("chargingProfileKind") in {"Relative", "Dynamic"} and "startSchedule" not in schedules[0]:
                     with_start_schedule = deepcopy(variant)
                     with_start_schedule["chargingProfile"]["chargingSchedule"][0]["startSchedule"] = start_schedule
                     extra_variants.append(with_start_schedule)
@@ -472,7 +476,13 @@ class CitrineClient:
                 if (
                     variant.get("evseId") not in (None, 0)
                     and str(cp.get("chargingProfilePurpose", "")).lower()
-                    in {"txdefaultprofile", "chargingstationmaxprofile"}
+                    in {
+                        "txdefaultprofile",
+                        "chargingstationmaxprofile",
+                        "chargingstationexternalconstraints",
+                        "prioritycharging",
+                        "localgeneration",
+                    }
                 ):
                     with_station_scope = deepcopy(variant)
                     with_station_scope["evseId"] = 0
@@ -480,10 +490,7 @@ class CitrineClient:
 
             payload_variants.extend(extra_variants)
 
-            paths = [
-                "/ocpp/2.0.1/smartcharging/setChargingProfile",
-                "/ocpp/2.0/smartcharging/setChargingProfile",
-            ]
+            paths = self._ocpp2_paths(protocol, "smartcharging/setChargingProfile")
 
         params = self._identifier_params(station_id)
         last_error: CitrineApiError | None = None
@@ -567,10 +574,7 @@ class CitrineClient:
                 criteria["chargingProfilePurpose"] = profile_purpose
 
             payload = {"evseId": evse_id, "chargingProfileCriteria": criteria}
-            paths = [
-                "/ocpp/2.0.1/smartcharging/clearChargingProfile",
-                "/ocpp/2.0/smartcharging/clearChargingProfile",
-            ]
+            paths = self._ocpp2_paths(protocol, "smartcharging/clearChargingProfile")
 
         params = self._identifier_params(station_id)
         response = await self._request_with_fallback_paths(
@@ -613,6 +617,77 @@ class CitrineClient:
                 results[station_id] = {"error": str(err)}
 
         return {"group_id": group_id, "results": results}
+
+    def _ocpp2_paths(self, protocol: str, route: str) -> list[str]:
+        """Return endpoint fallback order for OCPP 2.x API families."""
+        cleaned_route = route.lstrip("/")
+        if protocol == "ocpp2.1":
+            return [
+                f"/ocpp/2.1/{cleaned_route}",
+                f"/ocpp/2.0.1/{cleaned_route}",
+                f"/ocpp/2.0/{cleaned_route}",
+            ]
+
+        return [
+            f"/ocpp/2.0.1/{cleaned_route}",
+            f"/ocpp/2.0/{cleaned_route}",
+            f"/ocpp/2.1/{cleaned_route}",
+        ]
+
+    def _build_profile_periods(
+        self,
+        *,
+        limit: float,
+        setpoint: float | None,
+        schedule_periods: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        """Normalize schedule periods for OCPP charging profiles."""
+        if not schedule_periods:
+            period: dict[str, Any] = {
+                "startPeriod": 0,
+                "limit": round(limit, 1),
+            }
+            if setpoint is not None:
+                period["setpoint"] = round(setpoint, 1)
+            return [period]
+
+        normalized: list[dict[str, Any]] = []
+        for index, raw_period in enumerate(schedule_periods):
+            if not isinstance(raw_period, dict):
+                continue
+
+            period: dict[str, Any] = dict(raw_period)
+            if "startPeriod" in period:
+                try:
+                    period["startPeriod"] = int(period["startPeriod"])
+                except (TypeError, ValueError):
+                    period["startPeriod"] = 0
+            elif index == 0:
+                period["startPeriod"] = 0
+
+            if "limit" in period:
+                try:
+                    period["limit"] = round(float(period["limit"]), 1)
+                except (TypeError, ValueError):
+                    period.pop("limit", None)
+
+            if "setpoint" in period:
+                try:
+                    period["setpoint"] = round(float(period["setpoint"]), 1)
+                except (TypeError, ValueError):
+                    period.pop("setpoint", None)
+
+            if "limit" not in period:
+                period["limit"] = round(limit, 1)
+            if "setpoint" not in period and setpoint is not None:
+                period["setpoint"] = round(setpoint, 1)
+
+            normalized.append(period)
+
+        if not normalized:
+            return [{"startPeriod": 0, "limit": round(limit, 1)}]
+
+        return normalized
 
     def _identifier_params(self, station_id: str) -> dict[str, Any]:
         return {

@@ -19,6 +19,7 @@ from .const import (
     DEFAULT_PROFILE_DURATION,
     DEFAULT_PROFILE_KIND,
     DEFAULT_PROFILE_LIMIT,
+    DEFAULT_PROFILE_SETPOINT,
     DEFAULT_PROFILE_PURPOSE,
     DEFAULT_PROFILE_STACK_LEVEL,
     DEFAULT_PROFILE_UNIT,
@@ -117,6 +118,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         station_key = str(station_id)
         defaults = {
             "limit": DEFAULT_PROFILE_LIMIT,
+            "setpoint": DEFAULT_PROFILE_SETPOINT,
             "unit": DEFAULT_PROFILE_UNIT,
             "duration": DEFAULT_PROFILE_DURATION,
             "evse_id": 0,
@@ -124,6 +126,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "profile_id": None,
             "profile_purpose": DEFAULT_PROFILE_PURPOSE,
             "profile_kind": DEFAULT_PROFILE_KIND,
+            "profile_periods": None,
             "profile_sign_mode": "normal",
             "profile_tx_mode": "safe_fallback",
         }
@@ -338,6 +341,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if station_id not in self._profile_prefs:
                 self._profile_prefs[station_id] = {
                     "limit": DEFAULT_PROFILE_LIMIT,
+                    "setpoint": DEFAULT_PROFILE_SETPOINT,
                     "unit": capabilities.get("preferred_unit", DEFAULT_PROFILE_UNIT),
                     "duration": DEFAULT_PROFILE_DURATION,
                     "evse_id": int(station.get("defaultEvseId") or 0),
@@ -348,6 +352,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         DEFAULT_PROFILE_PURPOSE,
                     ),
                     "profile_kind": capabilities.get("default_profile_kind", DEFAULT_PROFILE_KIND),
+                    "profile_periods": None,
                     "profile_sign_mode": "normal",
                     "profile_tx_mode": "safe_fallback",
                 }
@@ -365,6 +370,8 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         value = str(protocol or "").strip().lower().replace(" ", "")
         if value in {"1.6", "ocpp1.6", "ocpp16", "ocpp-1.6"}:
             return "ocpp1.6"
+        if value in {"2.1", "ocpp2.1", "ocpp21", "ocpp-2.1"}:
+            return "ocpp2.1"
         if value in {"2.0", "2.0.1", "ocpp2.0", "ocpp2.0.1", "ocpp201", "ocpp-2.0.1"}:
             return "ocpp2.0.1"
         return "ocpp2.0.1"
@@ -397,6 +404,34 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "connector_count": connector_count,
             }
 
+        if protocol == "ocpp2.1":
+            return {
+                "supports_remote_start": True,
+                "supports_remote_stop": True,
+                "supports_set_charging_profile": True,
+                "supports_clear_charging_profile": True,
+                "supports_bidirectional_power_transfer": True,
+                "allowed_units": ["W", "A"],
+                "preferred_unit": "W",
+                "min_profile_limit": -500000.0,
+                "max_profile_limit": 500000.0,
+                "supported_profile_purposes": [
+                    "ChargingStationMaxProfile",
+                    "TxDefaultProfile",
+                    "TxProfile",
+                    "ChargingStationExternalConstraints",
+                    "PriorityCharging",
+                    "LocalGeneration",
+                ],
+                "default_profile_purpose": "ChargingStationMaxProfile",
+                "supported_profile_kinds": ["Absolute", "Relative", "Dynamic"],
+                "default_profile_kind": "Dynamic",
+                "supports_transaction_profile": True,
+                "supports_dynamic_profiles": True,
+                "supports_profile_setpoint": True,
+                "connector_count": connector_count,
+            }
+
         return {
             "supports_remote_start": True,
             "supports_remote_stop": True,
@@ -416,5 +451,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "supported_profile_kinds": ["Absolute", "Relative"],
             "default_profile_kind": "Absolute",
             "supports_transaction_profile": True,
+            "supports_dynamic_profiles": False,
+            "supports_profile_setpoint": False,
             "connector_count": connector_count,
         }

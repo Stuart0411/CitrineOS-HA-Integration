@@ -23,6 +23,7 @@ from .const import (
     ATTR_PROFILE_ID,
     ATTR_PROFILE_PURPOSE,
     ATTR_PROTOCOL,
+    ATTR_SETPOINT,
     ATTR_STACK_LEVEL,
     ATTR_STATION_ID,
     ATTR_TRANSACTION_ID,
@@ -310,9 +311,21 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
         tx_for_command = str(transaction_id) if (transaction_id is not None and purpose_key == "txprofile") else None
 
         limit_value = float(prefs.get("limit", 7000.0))
+        setpoint_value = prefs.get(ATTR_SETPOINT)
+        if setpoint_value is not None:
+            try:
+                setpoint_value = float(setpoint_value)
+            except (TypeError, ValueError):
+                setpoint_value = None
+        profile_periods = prefs.get("profile_periods")
+        if profile_periods is not None and not isinstance(profile_periods, list):
+            profile_periods = None
+
         sign_mode = str(prefs.get("profile_sign_mode", "normal"))
         if sign_mode == "invert_negative" and limit_value < 0:
             limit_value = abs(limit_value)
+        if sign_mode == "invert_negative" and isinstance(setpoint_value, float) and setpoint_value < 0:
+            setpoint_value = abs(setpoint_value)
 
         supports_bidirectional = bool(capabilities.get("supports_bidirectional_power_transfer", False))
         if limit_value < 0 and not supports_bidirectional:
@@ -350,6 +363,7 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
                 protocol=protocol,
                 station_id=self._station_id,
                 limit=limit_value,
+                setpoint=setpoint_value,
                 unit=requested_unit,
                 evse_id=evse_id,
                 duration=duration,
@@ -357,6 +371,7 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
                 profile_id=int(profile_id) if profile_id is not None else None,
                 profile_purpose=requested_purpose,
                 profile_kind=requested_kind,
+                profile_periods=profile_periods,
                 transaction_id=tx_for_command,
                 txprofile_compatibility_fallback=(tx_mode != "strict_txprofile"),
             )

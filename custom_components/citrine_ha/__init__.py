@@ -21,6 +21,7 @@ from .const import (
     ATTR_ID_TAG,
     ATTR_LIMIT,
     ATTR_PROFILE_ID,
+    ATTR_PROFILE_PERIODS,
     ATTR_PROFILE_KIND,
     ATTR_PROFILE_PURPOSE,
     ATTR_PROTOCOL,
@@ -29,6 +30,7 @@ from .const import (
     ATTR_STATION_IDS,
     ATTR_TRANSACTION_ID,
     ATTR_UNIT,
+    ATTR_SETPOINT,
     CONF_AUTH_TOKEN,
     CONF_BASE_URL,
     CONF_DEFAULT_EVSE_ID,
@@ -240,6 +242,14 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         if requested_kind and supported_kinds and requested_kind not in supported_kinds:
             requested_kind = str(capabilities.get("default_profile_kind", supported_kinds[0]))
 
+        requested_setpoint = call.data.get(ATTR_SETPOINT)
+        if requested_setpoint is not None:
+            requested_setpoint = float(requested_setpoint)
+
+        requested_periods = call.data.get(ATTR_PROFILE_PERIODS)
+        if requested_periods is not None and not isinstance(requested_periods, list):
+            raise HomeAssistantError("profile_periods must be a list of objects")
+
         transaction_id = call.data.get(ATTR_TRANSACTION_ID) or _station_current_transaction_id(
             coordinator,
             station_id,
@@ -277,6 +287,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             protocol=protocol,
             station_id=station_id,
             limit=limit_value,
+            setpoint=requested_setpoint,
             unit=requested_unit,
             evse_id=int(call.data.get(ATTR_EVSE_ID, 0)),
             duration=int(call.data.get(ATTR_DURATION, 300)),
@@ -284,6 +295,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             profile_id=call.data.get(ATTR_PROFILE_ID),
             profile_purpose=requested_purpose,
             profile_kind=requested_kind,
+            profile_periods=requested_periods,
             transaction_id=str(transaction_id) if transaction_id is not None else None,
         )
 
@@ -410,6 +422,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 vol.Optional(ATTR_PROFILE_ID): int,
                 vol.Optional(ATTR_PROFILE_PURPOSE): str,
                 vol.Optional(ATTR_PROFILE_KIND): str,
+                vol.Optional(ATTR_SETPOINT): vol.Coerce(float),
+                vol.Optional(ATTR_PROFILE_PERIODS): [dict],
             }
         ),
     )
