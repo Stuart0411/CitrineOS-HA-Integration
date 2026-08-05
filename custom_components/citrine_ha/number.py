@@ -19,25 +19,16 @@ from .const import (
     ATTR_ENTRY_ID,
     ATTR_EVSE_ID,
     ATTR_LIMIT,
-    ATTR_PROFILE_KIND,
-    ATTR_PROFILE_ID,
-    ATTR_PROFILE_PERIODS,
-    ATTR_PROFILE_PURPOSE,
-    ATTR_SETPOINT,
     ATTR_PROTOCOL,
-    ATTR_STACK_LEVEL,
     ATTR_STATION_ID,
-    ATTR_TRANSACTION_ID,
-    ATTR_UNIT,
     DEFAULT_PROFILE_DURATION,
+    DEFAULT_PROFILE_DISCHARGE_LIMIT,
     DEFAULT_PROFILE_LIMIT,
     DEFAULT_PROFILE_SETPOINT,
-    DEFAULT_PROFILE_STACK_LEVEL,
-    DEFAULT_PROFILE_UNIT,
-    SERVICE_SET_CHARGING_PROFILE,
     SERVICE_SET_STATION_LIMIT,
 )
 from .coordinator import CitrineCoordinator
+from .profile_controls import async_push_profile_update
 
 
 async def async_setup_entry(
@@ -62,6 +53,7 @@ async def async_setup_entry(
             entities.append(CitrineStationLimitNumber(coordinator, client, entry, station))
             entities.append(CitrineStationProfileLimitNumber(coordinator, entry, station))
             entities.append(CitrineStationProfileSetpointNumber(coordinator, entry, station))
+            entities.append(CitrineStationProfileDischargeLimitNumber(coordinator, entry, station))
             entities.append(CitrineStationProfileDurationNumber(coordinator, entry, station))
             entities.append(CitrineStationProfileEvseNumber(coordinator, entry, station))
             entities.append(CitrineStationProfileStackLevelNumber(coordinator, entry, station))
@@ -190,55 +182,12 @@ class CitrineProfilePreferenceNumber(CoordinatorEntity[CitrineCoordinator], Numb
         self.async_write_ha_state()
 
     async def _async_push_profile_update(self) -> None:
-        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
-        station = self._station()
-        protocol = str(
-            self.coordinator.get_station_protocol(self._station_id, station.get("protocol"))
-            or station.get("protocol")
-            or "ocpp2.0.1"
-        )
-
-        transaction_id = (
-            station.get("activeTransactionId")
-            or station.get("currentTransactionId")
-            or station.get("transactionId")
-            or station.get("previousTransactionId")
-        )
-
-        data: dict[str, Any] = {
-            ATTR_ENTRY_ID: self._entry.entry_id,
-            ATTR_STATION_ID: self._station_id,
-            ATTR_PROTOCOL: protocol,
-            ATTR_LIMIT: float(prefs.get("limit", DEFAULT_PROFILE_LIMIT)),
-            ATTR_SETPOINT: float(prefs.get("setpoint", DEFAULT_PROFILE_SETPOINT)),
-            ATTR_UNIT: str(prefs.get("unit", DEFAULT_PROFILE_UNIT)),
-            ATTR_EVSE_ID: int(prefs.get("evse_id", 0)),
-            ATTR_DURATION: int(prefs.get("duration", DEFAULT_PROFILE_DURATION)),
-            ATTR_STACK_LEVEL: int(prefs.get("stack_level", DEFAULT_PROFILE_STACK_LEVEL)),
-            ATTR_PROFILE_PURPOSE: str(prefs.get("profile_purpose", "TxDefaultProfile")),
-            ATTR_PROFILE_KIND: str(prefs.get("profile_kind", "Absolute")),
-        }
-
-        profile_id = prefs.get("profile_id")
-        if profile_id is not None:
-            try:
-                data[ATTR_PROFILE_ID] = int(profile_id)
-            except (TypeError, ValueError):
-                pass
-
-        profile_periods = prefs.get("profile_periods")
-        if isinstance(profile_periods, list):
-            data[ATTR_PROFILE_PERIODS] = profile_periods
-
-        if transaction_id is not None:
-            data[ATTR_TRANSACTION_ID] = str(transaction_id)
-
         try:
-            await self.hass.services.async_call(
-                DOMAIN,
-                SERVICE_SET_CHARGING_PROFILE,
-                data,
-                blocking=True,
+            await async_push_profile_update(
+                self.hass,
+                self.coordinator,
+                self._entry,
+                self._station_id,
             )
         except CitrineApiError as err:
             raise ValueError(f"Failed to push profile update: {err}") from err
@@ -334,6 +283,46 @@ class CitrineStationProfileSetpointNumber(CitrineProfilePreferenceNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         self.coordinator.update_station_profile_preferences(self._station_id, setpoint=float(value))
+        await self._async_push_profile_update()
+        self.async_write_ha_state()
+
+
+class CitrineStationProfileDischargeLimitNumber(CitrineProfilePreferenceNumber):
+    _attr_icon = "mdi:battery-arrow-down"
+    _attr_native_step = 100
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+
+    @property
+    def native_min_value(self) -> float:
+        return 0.0
+
+    @property
+    def native_max_value(self) -> float:
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        return float(capabilities.get("max_profile_limit", 500000.0))
+
+    def __init__(self, coordinator: CitrineCoordinator, entry: ConfigEntry, station: dict[str, Any]) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            station,
+            key="discharge_limit",
+            name_suffix="Profile Discharge Limit",
+            unique_suffix="profile_discharge_limit",
+        )
+        self.coordinator.update_station_profile_preferences(
+            self._station_id,
+            discharge_limit=self.coordinator.get_station_profile_preferences(self._station_id).get(
+                "discharge_limit",
+                DEFAULT_PROFILE_DISCHARGE_LIMIT,
+            ),
+        )
+
+    async def async_set_native_value(self, value: float) -> None:
+        self.coordinator.update_station_profile_preferences(
+            self._station_id,
+            discharge_limit=max(0.0, float(value)),
+        )
         await self._async_push_profile_update()
         self.async_write_ha_state()
 

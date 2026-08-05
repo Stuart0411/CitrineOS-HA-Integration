@@ -312,11 +312,20 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
 
         limit_value = float(prefs.get("limit", 7000.0))
         setpoint_value = prefs.get(ATTR_SETPOINT)
+        discharge_limit_value = prefs.get("discharge_limit")
+        operation_mode_value = prefs.get("operation_mode")
         if setpoint_value is not None:
             try:
                 setpoint_value = float(setpoint_value)
             except (TypeError, ValueError):
                 setpoint_value = None
+        if discharge_limit_value is not None:
+            try:
+                discharge_limit_value = max(0.0, float(discharge_limit_value))
+            except (TypeError, ValueError):
+                discharge_limit_value = None
+        if operation_mode_value is not None:
+            operation_mode_value = str(operation_mode_value)
         profile_periods = prefs.get("profile_periods")
         if profile_periods is not None and not isinstance(profile_periods, list):
             profile_periods = None
@@ -364,6 +373,8 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
                 station_id=self._station_id,
                 limit=limit_value,
                 setpoint=setpoint_value,
+                discharge_limit=discharge_limit_value,
+                operation_mode=operation_mode_value,
                 unit=requested_unit,
                 evse_id=evse_id,
                 duration=duration,

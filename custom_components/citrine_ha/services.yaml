@@ -164,6 +164,20 @@ set_charging_profile:
         number:
           min: -500000
           max: 500000
+    discharge_limit:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 500000
+    operation_mode:
+      required: false
+      selector:
+        select:
+          options:
+            - ChargingOnly
+            - ChargingAndDischarging
+            - DischargingOnly
     unit:
       required: false
       selector:

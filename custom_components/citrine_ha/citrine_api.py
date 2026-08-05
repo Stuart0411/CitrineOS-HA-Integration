@@ -285,6 +285,8 @@ class CitrineClient:
         station_id: str,
         limit: float,
         setpoint: float | None = None,
+        discharge_limit: float | None = None,
+        operation_mode: str | None = None,
         unit: str = "W",
         evse_id: int = 0,
         duration: int = 300,
@@ -304,6 +306,11 @@ class CitrineClient:
         requested_kind = str(profile_kind or "").strip().capitalize()
         if requested_kind not in {"Absolute", "Relative", "Dynamic"}:
             requested_kind = ""
+        if protocol != "ocpp2.1":
+            operation_mode = None
+            discharge_limit = None
+            if requested_kind == "Dynamic":
+                requested_kind = ""
 
         # Some OCPP 2.x firmware crashes/drops websocket when TxProfile carries UUID transaction ids.
         # Downgrade to TxDefaultProfile in that case to keep EVSE online while still applying a limit.
@@ -328,9 +335,8 @@ class CitrineClient:
             purpose_key = "txdefaultprofile"
             transaction_id = None
 
-        # Station/charge-point max profiles should be station scoped.
-        if purpose_key in {"chargingstationmaxprofile", "chargepointmaxprofile"}:
-            evse_id = 0
+        # Keep caller-provided evseId on first attempt for compatibility.
+        # Some backends validate evseId >= 1 even for station-scope profile purposes.
 
         payload_variants: list[dict[str, Any]] = []
 
@@ -393,6 +399,7 @@ class CitrineClient:
             schedule_periods_payload = self._build_profile_periods(
                 limit=limit,
                 setpoint=setpoint,
+                discharge_limit=discharge_limit,
                 schedule_periods=profile_periods,
             )
             schedule: dict[str, Any] = {
@@ -402,6 +409,8 @@ class CitrineClient:
             }
             if duration > 0:
                 schedule["duration"] = duration
+            if operation_mode:
+                schedule["operationMode"] = str(operation_mode)
 
             payload_base = {
                 "evseId": evse_id,
@@ -639,6 +648,7 @@ class CitrineClient:
         *,
         limit: float,
         setpoint: float | None,
+        discharge_limit: float | None,
         schedule_periods: list[dict[str, Any]] | None,
     ) -> list[dict[str, Any]]:
         """Normalize schedule periods for OCPP charging profiles."""
@@ -649,6 +659,8 @@ class CitrineClient:
             }
             if setpoint is not None:
                 period["setpoint"] = round(setpoint, 1)
+            if discharge_limit is not None:
+                period["dischargeLimit"] = round(discharge_limit, 1)
             return [period]
 
         normalized: list[dict[str, Any]] = []
@@ -657,6 +669,8 @@ class CitrineClient:
                 continue
 
             period: dict[str, Any] = dict(raw_period)
+            if "discharge_limit" in period and "dischargeLimit" not in period:
+                period["dischargeLimit"] = period.pop("discharge_limit")
             if "startPeriod" in period:
                 try:
                     period["startPeriod"] = int(period["startPeriod"])
@@ -677,10 +691,18 @@ class CitrineClient:
                 except (TypeError, ValueError):
                     period.pop("setpoint", None)
 
+            if "dischargeLimit" in period:
+                try:
+                    period["dischargeLimit"] = round(float(period["dischargeLimit"]), 1)
+                except (TypeError, ValueError):
+                    period.pop("dischargeLimit", None)
+
             if "limit" not in period:
                 period["limit"] = round(limit, 1)
             if "setpoint" not in period and setpoint is not None:
                 period["setpoint"] = round(setpoint, 1)
+            if "dischargeLimit" not in period and discharge_limit is not None:
+                period["dischargeLimit"] = round(discharge_limit, 1)
 
             normalized.append(period)
 

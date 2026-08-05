@@ -17,8 +17,10 @@ from .const import (
     CONF_TENANT_ID,
     DEFAULT_HASURA_QUERY,
     DEFAULT_PROFILE_DURATION,
+    DEFAULT_PROFILE_DISCHARGE_LIMIT,
     DEFAULT_PROFILE_KIND,
     DEFAULT_PROFILE_LIMIT,
+    DEFAULT_PROFILE_OPERATION_MODE,
     DEFAULT_PROFILE_SETPOINT,
     DEFAULT_PROFILE_PURPOSE,
     DEFAULT_PROFILE_STACK_LEVEL,
@@ -119,6 +121,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         defaults = {
             "limit": DEFAULT_PROFILE_LIMIT,
             "setpoint": DEFAULT_PROFILE_SETPOINT,
+            "discharge_limit": DEFAULT_PROFILE_DISCHARGE_LIMIT,
             "unit": DEFAULT_PROFILE_UNIT,
             "duration": DEFAULT_PROFILE_DURATION,
             "evse_id": 0,
@@ -126,6 +129,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "profile_id": None,
             "profile_purpose": DEFAULT_PROFILE_PURPOSE,
             "profile_kind": DEFAULT_PROFILE_KIND,
+            "operation_mode": DEFAULT_PROFILE_OPERATION_MODE,
             "profile_periods": None,
             "profile_sign_mode": "normal",
             "profile_tx_mode": "safe_fallback",
@@ -342,6 +346,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._profile_prefs[station_id] = {
                     "limit": DEFAULT_PROFILE_LIMIT,
                     "setpoint": DEFAULT_PROFILE_SETPOINT,
+                    "discharge_limit": DEFAULT_PROFILE_DISCHARGE_LIMIT,
                     "unit": capabilities.get("preferred_unit", DEFAULT_PROFILE_UNIT),
                     "duration": DEFAULT_PROFILE_DURATION,
                     "evse_id": int(station.get("defaultEvseId") or 0),
@@ -352,6 +357,10 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         DEFAULT_PROFILE_PURPOSE,
                     ),
                     "profile_kind": capabilities.get("default_profile_kind", DEFAULT_PROFILE_KIND),
+                    "operation_mode": capabilities.get(
+                        "default_operation_mode",
+                        DEFAULT_PROFILE_OPERATION_MODE,
+                    ),
                     "profile_periods": None,
                     "profile_sign_mode": "normal",
                     "profile_tx_mode": "safe_fallback",
@@ -429,6 +438,13 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "supports_transaction_profile": True,
                 "supports_dynamic_profiles": True,
                 "supports_profile_setpoint": True,
+                "supports_discharge_limit": True,
+                "supported_operation_modes": [
+                    "ChargingOnly",
+                    "ChargingAndDischarging",
+                    "DischargingOnly",
+                ],
+                "default_operation_mode": "ChargingOnly",
                 "connector_count": connector_count,
             }
 
@@ -453,5 +469,8 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "supports_transaction_profile": True,
             "supports_dynamic_profiles": False,
             "supports_profile_setpoint": False,
+            "supports_discharge_limit": False,
+            "supported_operation_modes": ["ChargingOnly"],
+            "default_operation_mode": "ChargingOnly",
             "connector_count": connector_count,
         }

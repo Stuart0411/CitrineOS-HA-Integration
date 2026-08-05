@@ -7,12 +7,14 @@ from typing import Any
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_TENANT_ID, DOMAIN
 from .coordinator import CitrineCoordinator
+from .profile_controls import async_push_profile_update
 
 
 async def async_setup_entry(
@@ -36,6 +38,7 @@ async def async_setup_entry(
             entities.append(CitrineStationProfileUnitSelect(coordinator, entry, station))
             entities.append(CitrineStationProfilePurposeSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileKindSelect(coordinator, entry, station))
+            entities.append(CitrineStationProfileOperationModeSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileSignModeSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileTxModeSelect(coordinator, entry, station))
         return entities
@@ -82,6 +85,17 @@ class CitrineProfileSelectBase(CoordinatorEntity[CitrineCoordinator], SelectEnti
     async def async_select_option(self, option: str) -> None:
         self.coordinator.update_station_profile_preferences(self._station_id, **{self._key: option})
         self.async_write_ha_state()
+
+    async def _async_push_profile_update(self) -> None:
+        try:
+            await async_push_profile_update(
+                self.hass,
+                self.coordinator,
+                self._entry,
+                self._station_id,
+            )
+        except Exception as err:  # noqa: BLE001
+            raise HomeAssistantError(f"Failed to push profile update: {err}") from err
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -187,6 +201,42 @@ class CitrineStationProfileKindSelect(CitrineProfileSelectBase):
         normalized = [str(option).capitalize() for option in options]
         # Keep options stable and unique in case capabilities contain duplicates.
         return list(dict.fromkeys(normalized))
+
+
+class CitrineStationProfileOperationModeSelect(CitrineProfileSelectBase):
+    """Select dynamic profile operation mode for OCPP 2.1 stations."""
+
+    _attr_icon = "mdi:swap-horizontal-bold"
+
+    def __init__(
+        self,
+        coordinator: CitrineCoordinator,
+        entry: ConfigEntry,
+        station: dict[str, Any],
+    ) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            station,
+            key="operation_mode",
+            name_suffix="Profile Operation Mode",
+            unique_suffix="profile_operation_mode",
+        )
+
+    @property
+    def options(self) -> list[str]:
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        return [
+            str(option)
+            for option in capabilities.get(
+                "supported_operation_modes",
+                ["ChargingOnly"],
+            )
+        ]
+
+    async def async_select_option(self, option: str) -> None:
+        await super().async_select_option(option)
+        await self._async_push_profile_update()
 
 
 class CitrineStationProfileSignModeSelect(CitrineProfileSelectBase):

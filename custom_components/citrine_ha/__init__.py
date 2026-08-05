@@ -16,11 +16,13 @@ from .citrine_api import CitrineApiError, CitrineClient
 from .const import (
     ATTR_DURATION,
     ATTR_ENTRY_ID,
+    ATTR_DISCHARGE_LIMIT,
     ATTR_EVSE_ID,
     ATTR_GROUP_ID,
     ATTR_ID_TAG,
     ATTR_LIMIT,
     ATTR_PROFILE_ID,
+    ATTR_OPERATION_MODE,
     ATTR_PROFILE_PERIODS,
     ATTR_PROFILE_KIND,
     ATTR_PROFILE_PURPOSE,
@@ -246,6 +248,26 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         if requested_setpoint is not None:
             requested_setpoint = float(requested_setpoint)
 
+        requested_discharge_limit = call.data.get(ATTR_DISCHARGE_LIMIT)
+        if requested_discharge_limit is not None:
+            requested_discharge_limit = float(requested_discharge_limit)
+
+        requested_operation_mode = call.data.get(ATTR_OPERATION_MODE)
+        if requested_operation_mode is not None:
+            requested_operation_mode = str(requested_operation_mode).strip()
+        supported_operation_modes = [
+            str(mode)
+            for mode in capabilities.get("supported_operation_modes", [])
+        ]
+        if (
+            requested_operation_mode
+            and supported_operation_modes
+            and requested_operation_mode not in supported_operation_modes
+        ):
+            requested_operation_mode = str(
+                capabilities.get("default_operation_mode", supported_operation_modes[0])
+            )
+
         requested_periods = call.data.get(ATTR_PROFILE_PERIODS)
         if requested_periods is not None and not isinstance(requested_periods, list):
             raise HomeAssistantError("profile_periods must be a list of objects")
@@ -288,6 +310,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             station_id=station_id,
             limit=limit_value,
             setpoint=requested_setpoint,
+            discharge_limit=requested_discharge_limit,
+            operation_mode=requested_operation_mode,
             unit=requested_unit,
             evse_id=int(call.data.get(ATTR_EVSE_ID, 0)),
             duration=int(call.data.get(ATTR_DURATION, 300)),
@@ -423,6 +447,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 vol.Optional(ATTR_PROFILE_PURPOSE): str,
                 vol.Optional(ATTR_PROFILE_KIND): str,
                 vol.Optional(ATTR_SETPOINT): vol.Coerce(float),
+                vol.Optional(ATTR_DISCHARGE_LIMIT): vol.Coerce(float),
+                vol.Optional(ATTR_OPERATION_MODE): str,
                 vol.Optional(ATTR_PROFILE_PERIODS): [dict],
             }
         ),

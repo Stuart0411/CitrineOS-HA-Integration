@@ -49,6 +49,8 @@ Bidirectional note:
 - Charging profile controls and service calls now support explicit `profile_kind` selection: `Absolute` or `Relative`.
 - OCPP 2.1 stations additionally support `Dynamic` profile kind and can push both `limit` and `setpoint` values.
 - `set_charging_profile` accepts optional `setpoint` and `profile_periods` for advanced multi-period dynamic schedules.
+- OCPP 2.1 dynamic profiles now support optional `operation_mode` and `discharge_limit` controls.
+- Changing `Profile Limit`, `Profile Setpoint`, or `Profile Discharge Limit` immediately pushes an updated profile.
 - If a charger applies the profile but drives power in the opposite sign direction, set `Profile Sign Mode` to `invert_negative` for that station.
 - `Profile Tx Mode` controls TxProfile behavior: use `safe_fallback` for charger compatibility fallbacks, or `strict_txprofile` to keep `TxProfile` unchanged.
 
