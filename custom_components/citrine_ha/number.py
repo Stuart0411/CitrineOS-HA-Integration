@@ -19,16 +19,22 @@ from .const import (
     ATTR_ENTRY_ID,
     ATTR_EVSE_ID,
     ATTR_LIMIT,
+    ATTR_PROFILE_KIND,
     ATTR_PROFILE_ID,
+    ATTR_PROFILE_PERIODS,
+    ATTR_PROFILE_PURPOSE,
+    ATTR_SETPOINT,
     ATTR_PROTOCOL,
     ATTR_STACK_LEVEL,
     ATTR_STATION_ID,
+    ATTR_TRANSACTION_ID,
     ATTR_UNIT,
     DEFAULT_PROFILE_DURATION,
     DEFAULT_PROFILE_LIMIT,
     DEFAULT_PROFILE_SETPOINT,
     DEFAULT_PROFILE_STACK_LEVEL,
     DEFAULT_PROFILE_UNIT,
+    SERVICE_SET_CHARGING_PROFILE,
     SERVICE_SET_STATION_LIMIT,
 )
 from .coordinator import CitrineCoordinator
@@ -183,6 +189,62 @@ class CitrineProfilePreferenceNumber(CoordinatorEntity[CitrineCoordinator], Numb
         self.coordinator.update_station_profile_preferences(self._station_id, **{self._key: value})
         self.async_write_ha_state()
 
+    async def _async_push_profile_update(self) -> None:
+        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+        station = self._station()
+        protocol = str(
+            self.coordinator.get_station_protocol(self._station_id, station.get("protocol"))
+            or station.get("protocol")
+            or "ocpp2.0.1"
+        )
+
+        transaction_id = (
+            station.get("activeTransactionId")
+            or station.get("currentTransactionId")
+            or station.get("transactionId")
+            or station.get("previousTransactionId")
+        )
+
+        data: dict[str, Any] = {
+            ATTR_ENTRY_ID: self._entry.entry_id,
+            ATTR_STATION_ID: self._station_id,
+            ATTR_PROTOCOL: protocol,
+            ATTR_LIMIT: float(prefs.get("limit", DEFAULT_PROFILE_LIMIT)),
+            ATTR_SETPOINT: float(prefs.get("setpoint", DEFAULT_PROFILE_SETPOINT)),
+            ATTR_UNIT: str(prefs.get("unit", DEFAULT_PROFILE_UNIT)),
+            ATTR_EVSE_ID: int(prefs.get("evse_id", 0)),
+            ATTR_DURATION: int(prefs.get("duration", DEFAULT_PROFILE_DURATION)),
+            ATTR_STACK_LEVEL: int(prefs.get("stack_level", DEFAULT_PROFILE_STACK_LEVEL)),
+            ATTR_PROFILE_PURPOSE: str(prefs.get("profile_purpose", "TxDefaultProfile")),
+            ATTR_PROFILE_KIND: str(prefs.get("profile_kind", "Absolute")),
+        }
+
+        profile_id = prefs.get("profile_id")
+        if profile_id is not None:
+            try:
+                data[ATTR_PROFILE_ID] = int(profile_id)
+            except (TypeError, ValueError):
+                pass
+
+        profile_periods = prefs.get("profile_periods")
+        if isinstance(profile_periods, list):
+            data[ATTR_PROFILE_PERIODS] = profile_periods
+
+        if transaction_id is not None:
+            data[ATTR_TRANSACTION_ID] = str(transaction_id)
+
+        try:
+            await self.hass.services.async_call(
+                DOMAIN,
+                SERVICE_SET_CHARGING_PROFILE,
+                data,
+                blocking=True,
+            )
+        except CitrineApiError as err:
+            raise ValueError(f"Failed to push profile update: {err}") from err
+        except Exception as err:  # noqa: BLE001
+            raise ValueError(f"Failed to push profile update: {err}") from err
+
     @property
     def device_info(self) -> DeviceInfo:
         station = self._station()
@@ -232,6 +294,11 @@ class CitrineStationProfileLimitNumber(CitrineProfilePreferenceNumber):
             limit=self.coordinator.get_station_profile_preferences(self._station_id).get("limit", DEFAULT_PROFILE_LIMIT),
         )
 
+    async def async_set_native_value(self, value: float) -> None:
+        self.coordinator.update_station_profile_preferences(self._station_id, limit=float(value))
+        await self._async_push_profile_update()
+        self.async_write_ha_state()
+
 
 class CitrineStationProfileSetpointNumber(CitrineProfilePreferenceNumber):
     _attr_icon = "mdi:target"
@@ -264,6 +331,11 @@ class CitrineStationProfileSetpointNumber(CitrineProfilePreferenceNumber):
                 DEFAULT_PROFILE_SETPOINT,
             ),
         )
+
+    async def async_set_native_value(self, value: float) -> None:
+        self.coordinator.update_station_profile_preferences(self._station_id, setpoint=float(value))
+        await self._async_push_profile_update()
+        self.async_write_ha_state()
 
 
 class CitrineStationProfileDurationNumber(CitrineProfilePreferenceNumber):
