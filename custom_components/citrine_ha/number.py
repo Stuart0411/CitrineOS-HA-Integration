@@ -180,7 +180,10 @@ class CitrineProfilePreferenceNumber(CoordinatorEntity[CitrineCoordinator], Numb
         value = prefs.get(self._key)
         if value is None:
             return 0.0
-        return float(value)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
 
     @property
     def available(self) -> bool:
@@ -232,12 +235,18 @@ class CitrineStationProfileLimitNumber(CitrineProfilePreferenceNumber):
     @property
     def native_min_value(self) -> float:
         capabilities = self.coordinator.get_station_capabilities(self._station_id)
-        return float(capabilities.get("min_profile_limit", -500000.0))
+        try:
+            return float(capabilities.get("min_profile_limit", -500000.0))
+        except (TypeError, ValueError):
+            return -500000.0
 
     @property
     def native_max_value(self) -> float:
         capabilities = self.coordinator.get_station_capabilities(self._station_id)
-        return float(capabilities.get("max_profile_limit", 500000.0))
+        try:
+            return float(capabilities.get("max_profile_limit", 500000.0))
+        except (TypeError, ValueError):
+            return 500000.0
 
     def __init__(self, coordinator: CitrineCoordinator, entry: ConfigEntry, station: dict[str, Any]) -> None:
         super().__init__(
@@ -269,12 +278,18 @@ class CitrineStationProfileSetpointNumber(CitrineProfilePreferenceNumber):
     @property
     def native_min_value(self) -> float:
         capabilities = self.coordinator.get_station_capabilities(self._station_id)
-        return float(capabilities.get("min_profile_limit", -500000.0))
+        try:
+            return float(capabilities.get("min_profile_limit", -500000.0))
+        except (TypeError, ValueError):
+            return -500000.0
 
     @property
     def native_max_value(self) -> float:
         capabilities = self.coordinator.get_station_capabilities(self._station_id)
-        return float(capabilities.get("max_profile_limit", 500000.0))
+        try:
+            return float(capabilities.get("max_profile_limit", 500000.0))
+        except (TypeError, ValueError):
+            return 500000.0
 
     def __init__(self, coordinator: CitrineCoordinator, entry: ConfigEntry, station: dict[str, Any]) -> None:
         super().__init__(
@@ -313,7 +328,10 @@ class CitrineStationProfileDischargeLimitNumber(CitrineProfilePreferenceNumber):
     @property
     def native_max_value(self) -> float:
         capabilities = self.coordinator.get_station_capabilities(self._station_id)
-        return float(capabilities.get("max_profile_limit", 500000.0))
+        try:
+            return float(capabilities.get("max_profile_limit", 500000.0))
+        except (TypeError, ValueError):
+            return 500000.0
 
     def __init__(self, coordinator: CitrineCoordinator, entry: ConfigEntry, station: dict[str, Any]) -> None:
         super().__init__(
@@ -422,7 +440,10 @@ class CitrineStationProfileIdNumber(CitrineProfilePreferenceNumber):
         value = prefs.get(self._key)
         if value is None:
             return 0.0
-        return float(value)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
 
     async def async_set_native_value(self, value: float) -> None:
         # Value 0 means auto-generated profile id on apply.
