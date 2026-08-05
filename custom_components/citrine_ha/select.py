@@ -82,6 +82,11 @@ class CitrineProfileSelectBase(CoordinatorEntity[CitrineCoordinator], SelectEnti
         as_str = str(value)
         return as_str if as_str in self.options else self.options[0]
 
+    @property
+    def available(self) -> bool:
+        # Profile controls are writable preferences and should remain available.
+        return True
+
     async def async_select_option(self, option: str) -> None:
         self.coordinator.update_station_profile_preferences(self._station_id, **{self._key: option})
         self.async_write_ha_state()
@@ -233,10 +238,6 @@ class CitrineStationProfileOperationModeSelect(CitrineProfileSelectBase):
                 ["ChargingOnly"],
             )
         ]
-
-    async def async_select_option(self, option: str) -> None:
-        await super().async_select_option(option)
-        await self._async_push_profile_update()
 
 
 class CitrineStationProfileSignModeSelect(CitrineProfileSelectBase):

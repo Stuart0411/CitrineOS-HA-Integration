@@ -99,6 +99,11 @@ class CitrineStationLimitNumber(CoordinatorEntity[CitrineCoordinator], NumberEnt
     def native_value(self) -> float:
         return self._value
 
+    @property
+    def available(self) -> bool:
+        # Keep writable control available even if discovery refresh is transiently unavailable.
+        return True
+
     async def async_set_native_value(self, value: float) -> None:
         station = self._station()
         protocol = self._client.normalize_protocol(
@@ -177,6 +182,11 @@ class CitrineProfilePreferenceNumber(CoordinatorEntity[CitrineCoordinator], Numb
             return 0.0
         return float(value)
 
+    @property
+    def available(self) -> bool:
+        # Profile controls are writable preferences and should remain available.
+        return True
+
     async def async_set_native_value(self, value: float) -> None:
         self.coordinator.update_station_profile_preferences(self._station_id, **{self._key: value})
         self.async_write_ha_state()
@@ -245,7 +255,9 @@ class CitrineStationProfileLimitNumber(CitrineProfilePreferenceNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         self.coordinator.update_station_profile_preferences(self._station_id, limit=float(value))
-        await self._async_push_profile_update()
+        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+        if str(prefs.get("profile_kind", "")).strip().capitalize() == "Dynamic":
+            await self._async_push_profile_update()
         self.async_write_ha_state()
 
 
@@ -283,7 +295,9 @@ class CitrineStationProfileSetpointNumber(CitrineProfilePreferenceNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         self.coordinator.update_station_profile_preferences(self._station_id, setpoint=float(value))
-        await self._async_push_profile_update()
+        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+        if str(prefs.get("profile_kind", "")).strip().capitalize() == "Dynamic":
+            await self._async_push_profile_update()
         self.async_write_ha_state()
 
 
@@ -323,7 +337,6 @@ class CitrineStationProfileDischargeLimitNumber(CitrineProfilePreferenceNumber):
             self._station_id,
             discharge_limit=max(0.0, float(value)),
         )
-        await self._async_push_profile_update()
         self.async_write_ha_state()
 
 
