@@ -496,6 +496,33 @@ class CitrineStartDynamicSessionButton(CitrineBaseButton):
 
         station = self._station()
         prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+        supported_purposes = [str(item) for item in capabilities.get("supported_profile_purposes", [])]
+        supported_operation_modes = [
+            str(item) for item in capabilities.get("supported_operation_modes", [])
+        ]
+
+        profile_purpose = str(prefs.get("profile_purpose", "")).strip()
+        if profile_purpose in {"", "TxProfile", "TxDefaultProfile"}:
+            profile_purpose = ""
+        if profile_purpose and supported_purposes and profile_purpose not in supported_purposes:
+            profile_purpose = ""
+        if not profile_purpose:
+            if "ChargingStationExternalConstraints" in supported_purposes:
+                profile_purpose = "ChargingStationExternalConstraints"
+            else:
+                profile_purpose = str(
+                    capabilities.get("default_profile_purpose", "ChargingStationMaxProfile")
+                )
+
+        operation_mode = str(prefs.get("operation_mode", "")).strip()
+        if operation_mode and supported_operation_modes and operation_mode not in supported_operation_modes:
+            operation_mode = ""
+        if not operation_mode:
+            if "CentralSetpoint" in supported_operation_modes:
+                operation_mode = "CentralSetpoint"
+            else:
+                operation_mode = str(capabilities.get("default_operation_mode", "ChargingOnly"))
+
         evse_id = int(prefs.get("evse_id", 0))
         if evse_id < 1:
             fallback_evse = station.get("defaultEvseId")
@@ -515,6 +542,8 @@ class CitrineStartDynamicSessionButton(CitrineBaseButton):
             profile_kind="Dynamic",
             dynamic_session_active=True,
             evse_id=evse_id,
+            profile_purpose=profile_purpose,
+            operation_mode=operation_mode,
         )
 
         try:

@@ -190,7 +190,28 @@ class CitrineStationProfilePurposeSelect(CitrineProfileSelectBase):
             "supported_profile_purposes",
             ["TxProfile", "TxDefaultProfile"],
         )
-        return [str(option) for option in options]
+        normalized = [str(option) for option in options]
+        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+        profile_kind = str(prefs.get("profile_kind", "")).strip().capitalize()
+        if profile_kind == "Dynamic":
+            # Dynamic profile kind should not be combined with Tx* purposes.
+            filtered = [
+                item
+                for item in normalized
+                if item not in {"TxProfile", "TxDefaultProfile"}
+            ]
+            if filtered:
+                return filtered
+        return normalized
+
+    async def async_select_option(self, option: str) -> None:
+        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+        profile_kind = str(prefs.get("profile_kind", "")).strip().capitalize()
+        if profile_kind == "Dynamic" and option in {"TxProfile", "TxDefaultProfile"}:
+            raise HomeAssistantError(
+                "Dynamic profile kind cannot be used with TxProfile or TxDefaultProfile"
+            )
+        await super().async_select_option(option)
 
 
 class CitrineStationProfileKindSelect(CitrineProfileSelectBase):
