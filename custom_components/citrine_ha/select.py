@@ -39,6 +39,7 @@ async def async_setup_entry(
             entities.append(CitrineStationProfileUnitSelect(coordinator, entry, station))
             entities.append(CitrineStationProfilePurposeSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileKindSelect(coordinator, entry, station))
+            entities.append(CitrineStationProfileEvseSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileSignModeSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileTxModeSelect(coordinator, entry, station))
             if bool(capabilities.get("supports_dynamic_profiles", False)):
@@ -99,6 +100,7 @@ class CitrineProfileSelectBase(CoordinatorEntity[CitrineCoordinator], SelectEnti
             "profile_purpose",
             "profile_kind",
             "operation_mode",
+            "evse_id",
         }:
             await self._async_push_profile_update()
         self.async_write_ha_state()
@@ -218,6 +220,73 @@ class CitrineStationProfileKindSelect(CitrineProfileSelectBase):
         normalized = [str(option).capitalize() for option in options]
         # Keep options stable and unique in case capabilities contain duplicates.
         return list(dict.fromkeys(normalized))
+
+
+class CitrineStationProfileEvseSelect(CitrineProfileSelectBase):
+    """Select EVSE ID from discovered connectors for this station."""
+
+    _attr_icon = "mdi:ev-plug-type2"
+
+    def __init__(
+        self,
+        coordinator: CitrineCoordinator,
+        entry: ConfigEntry,
+        station: dict[str, Any],
+    ) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            station,
+            key="evse_id",
+            name_suffix="Profile EVSE",
+            unique_suffix="profile_evse_select",
+        )
+
+    @property
+    def options(self) -> list[str]:
+        station = self._station()
+        values: set[int] = set()
+        for connector in station.get("connectors", []):
+            candidate = connector.get("evseId") or connector.get("connectorId") or connector.get("id")
+            if candidate is None:
+                continue
+            try:
+                parsed = int(candidate)
+            except (TypeError, ValueError):
+                continue
+            if parsed >= 1:
+                values.add(parsed)
+
+        default_evse = station.get("defaultEvseId")
+        try:
+            if default_evse is not None and int(default_evse) >= 1:
+                values.add(int(default_evse))
+        except (TypeError, ValueError):
+            pass
+
+        if not values:
+            values.add(1)
+
+        return [str(item) for item in sorted(values)]
+
+    @property
+    def current_option(self) -> str:
+        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+        try:
+            value = int(prefs.get("evse_id", 1))
+        except (TypeError, ValueError):
+            value = 1
+        as_str = str(value)
+        return as_str if as_str in self.options else self.options[0]
+
+    async def async_select_option(self, option: str) -> None:
+        try:
+            parsed = int(option)
+        except (TypeError, ValueError):
+            raise HomeAssistantError("Invalid EVSE selection")
+        if parsed < 1:
+            raise HomeAssistantError("EVSE selection must be >= 1")
+        await super().async_select_option(str(parsed))
 
 
 class CitrineStationProfileOperationModeSelect(CitrineProfileSelectBase):

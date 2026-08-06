@@ -56,7 +56,6 @@ async def async_setup_entry(
             entities.append(CitrineStationLimitNumber(coordinator, client, entry, station))
             entities.append(CitrineStationProfileLimitNumber(coordinator, entry, station))
             entities.append(CitrineStationProfileDurationNumber(coordinator, entry, station))
-            entities.append(CitrineStationProfileEvseNumber(coordinator, entry, station))
             entities.append(CitrineStationProfileStackLevelNumber(coordinator, entry, station))
             entities.append(CitrineStationProfileIdNumber(coordinator, entry, station))
 

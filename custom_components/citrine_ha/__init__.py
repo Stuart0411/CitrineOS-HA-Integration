@@ -272,6 +272,13 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         if requested_periods is not None and not isinstance(requested_periods, list):
             raise HomeAssistantError("profile_periods must be a list of objects")
 
+        requested_evse_id = int(call.data.get(ATTR_EVSE_ID, 0))
+        if protocol != "ocpp1.6" and requested_evse_id < 1:
+            requested_evse_id = (
+                _station_default_evse_id(coordinator, station_id)
+                or DEFAULT_DEFAULT_EVSE_ID
+            )
+
         transaction_id = call.data.get(ATTR_TRANSACTION_ID) or _station_current_transaction_id(
             coordinator,
             station_id,
@@ -313,7 +320,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             discharge_limit=requested_discharge_limit,
             operation_mode=requested_operation_mode,
             unit=requested_unit,
-            evse_id=int(call.data.get(ATTR_EVSE_ID, 0)),
+            evse_id=requested_evse_id,
             duration=int(call.data.get(ATTR_DURATION, 300)),
             stack_level=int(call.data.get(ATTR_STACK_LEVEL, 1)),
             profile_id=call.data.get(ATTR_PROFILE_ID),
