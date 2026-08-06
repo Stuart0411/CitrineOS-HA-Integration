@@ -332,15 +332,15 @@ class CitrineStationProfileDischargeLimitNumber(CitrineProfilePreferenceNumber):
 
     @property
     def native_min_value(self) -> float:
-        return 0.0
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        try:
+            return -abs(float(capabilities.get("max_profile_limit", 500000.0)))
+        except (TypeError, ValueError):
+            return -500000.0
 
     @property
     def native_max_value(self) -> float:
-        capabilities = self.coordinator.get_station_capabilities(self._station_id)
-        try:
-            return float(capabilities.get("max_profile_limit", 500000.0))
-        except (TypeError, ValueError):
-            return 500000.0
+        return 0.0
 
     def __init__(self, coordinator: CitrineCoordinator, entry: ConfigEntry, station: dict[str, Any]) -> None:
         super().__init__(
@@ -360,9 +360,12 @@ class CitrineStationProfileDischargeLimitNumber(CitrineProfilePreferenceNumber):
         )
 
     async def async_set_native_value(self, value: float) -> None:
+        normalized = float(value)
+        if normalized > 0:
+            normalized = -normalized
         self.coordinator.update_station_profile_preferences(
             self._station_id,
-            discharge_limit=max(0.0, float(value)),
+            discharge_limit=normalized,
         )
         if self._is_dynamic_live():
             await self._async_push_profile_update()
