@@ -35,12 +35,14 @@ async def async_setup_entry(
             if not station_id or station_id in known_ids:
                 continue
             known_ids.add(station_id)
+            capabilities = coordinator.get_station_capabilities(str(station_id))
             entities.append(CitrineStationProfileUnitSelect(coordinator, entry, station))
             entities.append(CitrineStationProfilePurposeSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileKindSelect(coordinator, entry, station))
-            entities.append(CitrineStationProfileOperationModeSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileSignModeSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileTxModeSelect(coordinator, entry, station))
+            if bool(capabilities.get("supports_dynamic_profiles", False)):
+                entities.append(CitrineStationProfileOperationModeSelect(coordinator, entry, station))
         return entities
 
     async_add_entities(_build_entities())
@@ -89,6 +91,16 @@ class CitrineProfileSelectBase(CoordinatorEntity[CitrineCoordinator], SelectEnti
 
     async def async_select_option(self, option: str) -> None:
         self.coordinator.update_station_profile_preferences(self._station_id, **{self._key: option})
+        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+        profile_kind = str(prefs.get("profile_kind", "")).strip().capitalize()
+        is_dynamic_live = bool(prefs.get("dynamic_session_active", False)) or profile_kind == "Dynamic"
+        if is_dynamic_live and self._key in {
+            "unit",
+            "profile_purpose",
+            "profile_kind",
+            "operation_mode",
+        }:
+            await self._async_push_profile_update()
         self.async_write_ha_state()
 
     async def _async_push_profile_update(self) -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import UTC, datetime
 from datetime import timedelta
 from typing import Any
 
@@ -143,6 +144,10 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "profile_periods": None,
             "profile_sign_mode": "normal",
             "profile_tx_mode": "safe_fallback",
+            "dynamic_session_active": False,
+            "last_profile_push_status": "idle",
+            "last_profile_push_at": None,
+            "last_profile_push_error": None,
         }
         if station_key not in self._profile_prefs:
             self._profile_prefs[station_key] = dict(defaults)
@@ -155,6 +160,29 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if value is not None:
                 prefs[key] = value
         self._profile_prefs[station_key] = prefs
+
+    def mark_profile_push_started(self, station_id: str) -> None:
+        self.update_station_profile_preferences(
+            station_id,
+            last_profile_push_status="pending",
+            last_profile_push_error=None,
+        )
+
+    def mark_profile_push_succeeded(self, station_id: str) -> None:
+        self.update_station_profile_preferences(
+            station_id,
+            last_profile_push_status="applied",
+            last_profile_push_error=None,
+            last_profile_push_at=datetime.now(UTC).isoformat(),
+        )
+
+    def mark_profile_push_failed(self, station_id: str, error: str) -> None:
+        self.update_station_profile_preferences(
+            station_id,
+            last_profile_push_status="failed",
+            last_profile_push_error=str(error)[:300],
+            last_profile_push_at=datetime.now(UTC).isoformat(),
+        )
 
     @staticmethod
     def _extract_stations(data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -374,6 +402,10 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "profile_periods": None,
                     "profile_sign_mode": "normal",
                     "profile_tx_mode": "safe_fallback",
+                    "dynamic_session_active": False,
+                    "last_profile_push_status": "idle",
+                    "last_profile_push_at": None,
+                    "last_profile_push_error": None,
                 }
             else:
                 # Migrate old defaults that used TxProfile by default, which can fail without a transaction.
@@ -383,6 +415,14 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         "default_profile_purpose",
                         existing.get("profile_purpose"),
                     )
+                if "dynamic_session_active" not in existing:
+                    existing["dynamic_session_active"] = False
+                if "last_profile_push_status" not in existing:
+                    existing["last_profile_push_status"] = "idle"
+                if "last_profile_push_at" not in existing:
+                    existing["last_profile_push_at"] = None
+                if "last_profile_push_error" not in existing:
+                    existing["last_profile_push_error"] = None
 
     @staticmethod
     def _normalize_protocol(protocol: Any) -> str:

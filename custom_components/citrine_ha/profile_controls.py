@@ -107,13 +107,19 @@ async def async_push_profile_update(
     station_id: str,
 ) -> None:
     """Push updated profile preferences to Citrine via service call."""
+    coordinator.mark_profile_push_started(station_id)
     data = build_profile_service_data(coordinator, entry, station_id)
-    await hass.services.async_call(
-        DOMAIN,
-        SERVICE_SET_CHARGING_PROFILE,
-        data,
-        blocking=True,
-    )
+    try:
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SET_CHARGING_PROFILE,
+            data,
+            blocking=True,
+        )
+    except Exception as err:
+        coordinator.mark_profile_push_failed(station_id, str(err))
+        raise
+    coordinator.mark_profile_push_succeeded(station_id)
 
 
 def _station_record(coordinator: CitrineCoordinator, station_id: str) -> dict[str, Any]:

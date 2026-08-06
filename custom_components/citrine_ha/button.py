@@ -38,6 +38,7 @@ from .const import (
     SERVICE_STOP_CHARGING,
 )
 from .coordinator import CitrineCoordinator
+from .profile_controls import async_push_profile_update
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,10 +62,14 @@ async def async_setup_entry(
             if not station_id or station_id in known_ids:
                 continue
             known_ids.add(station_id)
+            capabilities = coordinator.get_station_capabilities(str(station_id))
             entities.append(CitrineStartChargingButton(hass, coordinator, client, entry, station))
             entities.append(CitrineStopChargingButton(hass, coordinator, client, entry, station))
             entities.append(CitrineApplyChargingProfileButton(hass, coordinator, client, entry, station))
             entities.append(CitrineClearChargingProfileButton(hass, coordinator, client, entry, station))
+            if bool(capabilities.get("supports_dynamic_profiles", False)):
+                entities.append(CitrineStartDynamicSessionButton(hass, coordinator, client, entry, station))
+                entities.append(CitrineStopDynamicSessionButton(hass, coordinator, client, entry, station))
         return entities
 
     async_add_entities(_build_entities())
@@ -386,10 +391,17 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
                 transaction_id=tx_for_command,
                 txprofile_compatibility_fallback=(tx_mode != "strict_txprofile"),
             )
+            self.coordinator.update_station_profile_preferences(
+                self._station_id,
+                dynamic_session_active=(str(requested_kind).strip().capitalize() == "Dynamic"),
+            )
+            self.coordinator.mark_profile_push_succeeded(self._station_id)
             await self.coordinator.async_request_refresh()
         except CitrineApiError as err:
+            self.coordinator.mark_profile_push_failed(self._station_id, str(err))
             raise HomeAssistantError(f"Apply profile command failed: {err}") from err
         except Exception as err:  # noqa: BLE001
+            self.coordinator.mark_profile_push_failed(self._station_id, str(err))
             raise HomeAssistantError(f"Apply profile command failed: {err}") from err
 
 
@@ -449,6 +461,110 @@ class CitrineClearChargingProfileButton(CitrineBaseButton):
                 stack_level=stack_level,
                 profile_purpose=requested_purpose,
             )
+            self.coordinator.update_station_profile_preferences(
+                self._station_id,
+                dynamic_session_active=False,
+            )
+            self.coordinator.mark_profile_push_succeeded(self._station_id)
             await self.coordinator.async_request_refresh()
         except Exception as err:  # noqa: BLE001
+            self.coordinator.mark_profile_push_failed(self._station_id, str(err))
             raise HomeAssistantError(f"Clear profile command failed: {err}") from err
+
+
+class CitrineStartDynamicSessionButton(CitrineBaseButton):
+    """Start a dynamic profile session and enable live preference pushes."""
+
+    _attr_icon = "mdi:chart-bell-curve-cumulative"
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: CitrineCoordinator,
+        client: CitrineClient,
+        entry: ConfigEntry,
+        station: dict[str, Any],
+    ) -> None:
+        super().__init__(hass, coordinator, client, entry, station)
+        self._attr_unique_id = f"{entry.entry_id}_{self._station_id}_start_dynamic"
+        self._attr_name = f"{self._station_id} Start Dynamic Session"
+
+    async def async_press(self) -> None:
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        if not bool(capabilities.get("supports_dynamic_profiles", False)):
+            raise HomeAssistantError("Station does not support OCPP dynamic charging profiles")
+
+        self.coordinator.update_station_profile_preferences(
+            self._station_id,
+            profile_kind="Dynamic",
+            dynamic_session_active=True,
+        )
+
+        try:
+            await async_push_profile_update(
+                self._hass_instance,
+                self.coordinator,
+                self._entry,
+                self._station_id,
+            )
+            await self.coordinator.async_request_refresh()
+        except Exception as err:  # noqa: BLE001
+            raise HomeAssistantError(f"Start dynamic session failed: {err}") from err
+
+
+class CitrineStopDynamicSessionButton(CitrineBaseButton):
+    """Stop dynamic profile session and clear active dynamic profile."""
+
+    _attr_icon = "mdi:chart-bell-curve-cumulative-off"
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        coordinator: CitrineCoordinator,
+        client: CitrineClient,
+        entry: ConfigEntry,
+        station: dict[str, Any],
+    ) -> None:
+        super().__init__(hass, coordinator, client, entry, station)
+        self._attr_unique_id = f"{entry.entry_id}_{self._station_id}_stop_dynamic"
+        self._attr_name = f"{self._station_id} Stop Dynamic Session"
+
+    async def async_press(self) -> None:
+        station = self._station()
+        protocol = self._client.normalize_protocol(
+            self.coordinator.get_station_protocol(self._station_id, str(station.get("protocol", "")))
+        )
+        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+
+        profile_id = prefs.get("profile_id")
+        evse_id = int(prefs.get("evse_id", 0))
+        stack_level = int(prefs.get("stack_level", 1))
+        profile_purpose = str(prefs.get("profile_purpose", "TxDefaultProfile"))
+
+        try:
+            await self._client.clear_charging_profile(
+                protocol=protocol,
+                station_id=self._station_id,
+                evse_id=evse_id,
+                profile_id=int(profile_id) if profile_id is not None else None,
+                stack_level=stack_level,
+                profile_purpose=profile_purpose,
+            )
+            self.coordinator.update_station_profile_preferences(
+                self._station_id,
+                dynamic_session_active=False,
+                profile_kind=capabilities_default_kind(self.coordinator, self._station_id),
+            )
+            self.coordinator.mark_profile_push_succeeded(self._station_id)
+            await self.coordinator.async_request_refresh()
+        except CitrineApiError as err:
+            self.coordinator.mark_profile_push_failed(self._station_id, str(err))
+            raise HomeAssistantError(f"Stop dynamic session failed: {err}") from err
+        except Exception as err:  # noqa: BLE001
+            self.coordinator.mark_profile_push_failed(self._station_id, str(err))
+            raise HomeAssistantError(f"Stop dynamic session failed: {err}") from err
+
+
+def capabilities_default_kind(coordinator: CitrineCoordinator, station_id: str) -> str:
+    capabilities = coordinator.get_station_capabilities(station_id)
+    return str(capabilities.get("default_profile_kind", "Absolute"))
