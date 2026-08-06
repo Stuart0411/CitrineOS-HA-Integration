@@ -229,21 +229,38 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _query_without_missing_fields(query: str, error: HasuraError) -> str:
         updated = query
         for item in error.errors:
-            message = item.get("message", "")
-            match = re.search(r"field ['\"]([^'\"]+)['\"] not found in type: ['\"]([^'\"]+)['\"]", message)
-            if not match:
+            field_name, type_name = CitrineCoordinator._extract_missing_field(item)
+            if not field_name:
                 continue
-            field_name, type_name = match.groups()
-            updated = CitrineCoordinator._remove_field_from_block(updated, type_name, field_name)
+            if type_name:
+                updated = CitrineCoordinator._remove_field_from_block(updated, type_name, field_name)
+            else:
+                updated = CitrineCoordinator._remove_field_token(updated, field_name)
         return " ".join(updated.split())
 
     @staticmethod
     def _sanitize_discovery_query(query: str) -> str:
         """Pre-clean optional fields that are commonly absent across schemas."""
         sanitized = str(query)
-        # Some deployments do not expose Transactions.idToken.
-        sanitized = re.sub(r"\bidToken\b", "", sanitized, flags=re.IGNORECASE)
+        # Some deployments do not expose these optional transaction fields.
+        for field_name in ("idToken", "chargingStationId", "active"):
+            sanitized = CitrineCoordinator._remove_field_token(sanitized, field_name)
         return " ".join(sanitized.split())
+
+    @staticmethod
+    def _extract_missing_field(error_item: dict[str, Any]) -> tuple[str | None, str | None]:
+        message = str(error_item.get("message", ""))
+        match = re.search(r"field ['\"]([^'\"]+)['\"] not found in type: ['\"]([^'\"]+)['\"]", message)
+        if match:
+            return match.group(1), match.group(2)
+
+        path = str(error_item.get("extensions", {}).get("path", ""))
+        # Example: $.selectionSet.Transactions.selectionSet.idToken
+        path_match = re.search(r"selectionSet\.([A-Za-z0-9_]+)\.selectionSet\.([A-Za-z0-9_]+)$", path)
+        if path_match:
+            return path_match.group(2), path_match.group(1)
+
+        return None, None
 
     @staticmethod
     def _remove_field_from_block(query: str, type_name: str, field_name: str) -> str:
@@ -261,8 +278,12 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return updated
 
         # Fallback: remove the field token globally when block matching fails due to schema aliasing.
-        token_pattern = re.compile(rf"\b{re.escape(field_name)}\b")
-        return token_pattern.sub("", query, count=1)
+        return CitrineCoordinator._remove_field_token(query, field_name)
+
+    @staticmethod
+    def _remove_field_token(query: str, field_name: str) -> str:
+        token_pattern = re.compile(rf"\b{re.escape(field_name)}\b", re.IGNORECASE)
+        return token_pattern.sub("", query)
 
     @staticmethod
     def _extract_connectors(data: dict[str, Any]) -> list[dict[str, Any]]:
