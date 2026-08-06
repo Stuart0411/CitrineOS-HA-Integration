@@ -21,6 +21,7 @@ from .const import (
     ATTR_LIMIT,
     ATTR_PROTOCOL,
     ATTR_STATION_ID,
+    ATTR_UNIT,
     DEFAULT_PROFILE_DURATION,
     DEFAULT_PROFILE_DISCHARGE_LIMIT,
     DEFAULT_PROFILE_LIMIT,
@@ -50,14 +51,18 @@ async def async_setup_entry(
             if not station_id or station_id in known_ids:
                 continue
             known_ids.add(station_id)
+            capabilities = coordinator.get_station_capabilities(str(station_id))
             entities.append(CitrineStationLimitNumber(coordinator, client, entry, station))
             entities.append(CitrineStationProfileLimitNumber(coordinator, entry, station))
-            entities.append(CitrineStationProfileSetpointNumber(coordinator, entry, station))
-            entities.append(CitrineStationProfileDischargeLimitNumber(coordinator, entry, station))
             entities.append(CitrineStationProfileDurationNumber(coordinator, entry, station))
             entities.append(CitrineStationProfileEvseNumber(coordinator, entry, station))
             entities.append(CitrineStationProfileStackLevelNumber(coordinator, entry, station))
             entities.append(CitrineStationProfileIdNumber(coordinator, entry, station))
+
+            if bool(capabilities.get("supports_profile_setpoint", False)):
+                entities.append(CitrineStationProfileSetpointNumber(coordinator, entry, station))
+            if bool(capabilities.get("supports_discharge_limit", False)):
+                entities.append(CitrineStationProfileDischargeLimitNumber(coordinator, entry, station))
         return entities
 
     async_add_entities(_build_entities())
@@ -195,6 +200,11 @@ class CitrineProfilePreferenceNumber(CoordinatorEntity[CitrineCoordinator], Numb
         self.coordinator.update_station_profile_preferences(self._station_id, **{self._key: value})
         self.async_write_ha_state()
 
+    def _is_dynamic_live(self) -> bool:
+        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+        profile_kind = str(prefs.get("profile_kind", "")).strip().capitalize()
+        return bool(prefs.get("dynamic_session_active", False)) or profile_kind == "Dynamic"
+
     async def _async_push_profile_update(self) -> None:
         try:
             await async_push_profile_update(
@@ -265,8 +275,7 @@ class CitrineStationProfileLimitNumber(CitrineProfilePreferenceNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         self.coordinator.update_station_profile_preferences(self._station_id, limit=float(value))
-        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
-        if str(prefs.get("profile_kind", "")).strip().capitalize() == "Dynamic":
+        if self._is_dynamic_live():
             await self._async_push_profile_update()
         self.async_write_ha_state()
 
@@ -311,8 +320,7 @@ class CitrineStationProfileSetpointNumber(CitrineProfilePreferenceNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         self.coordinator.update_station_profile_preferences(self._station_id, setpoint=float(value))
-        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
-        if str(prefs.get("profile_kind", "")).strip().capitalize() == "Dynamic":
+        if self._is_dynamic_live():
             await self._async_push_profile_update()
         self.async_write_ha_state()
 
@@ -356,6 +364,8 @@ class CitrineStationProfileDischargeLimitNumber(CitrineProfilePreferenceNumber):
             self._station_id,
             discharge_limit=max(0.0, float(value)),
         )
+        if self._is_dynamic_live():
+            await self._async_push_profile_update()
         self.async_write_ha_state()
 
 

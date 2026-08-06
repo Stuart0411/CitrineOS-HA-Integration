@@ -40,6 +40,7 @@ async def async_setup_entry(
             entities.append(CitrineStationProtocolSensor(coordinator, entry, station))
             entities.append(CitrineStationConnectorCountSensor(coordinator, entry, station))
             entities.append(CitrineStationActiveSessionSensor(coordinator, entry, station))
+            entities.append(CitrineStationProfileStatusSensor(coordinator, entry, station))
             entities.append(CitrineStationHeartbeatAgeSensor(coordinator, entry, station))
         return entities
 
@@ -298,11 +299,15 @@ class CitrineStationActiveSessionSensor(CoordinatorEntity[CitrineCoordinator], S
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         station = self._station()
+        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
         return {
             "active_transaction_id": station.get("activeTransactionId"),
             "current_transaction_id": station.get("currentTransactionId"),
             "previous_transaction_id": station.get("previousTransactionId"),
             "next_remote_start_id": station.get("nextRemoteStartId"),
+            "dynamic_session_active": bool(prefs.get("dynamic_session_active", False)),
+            "profile_kind": prefs.get("profile_kind"),
+            "profile_purpose": prefs.get("profile_purpose"),
         }
 
     @property
@@ -351,6 +356,59 @@ class CitrineStationHeartbeatAgeSensor(CoordinatorEntity[CitrineCoordinator], Se
         now = dt_util.utcnow()
         age = int((now - parsed).total_seconds())
         return max(age, 0)
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _device_info(self._entry, self._station())
+
+    def _station(self) -> dict[str, Any]:
+        for station in self.coordinator.data.get("stations", []):
+            if str(station.get("id")) == self._station_id:
+                return station
+        return {"id": self._station_id}
+
+
+class CitrineStationProfileStatusSensor(CoordinatorEntity[CitrineCoordinator], SensorEntity):
+    """Status sensor for profile push and dynamic session state."""
+
+    _attr_icon = "mdi:chart-timeline-variant"
+
+    def __init__(
+        self,
+        coordinator: CitrineCoordinator,
+        entry: ConfigEntry,
+        station: dict[str, Any],
+    ) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._station_id = str(station["id"])
+        self._attr_unique_id = f"{entry.entry_id}_{self._station_id}_profile_status"
+        self._attr_name = f"{self._station_id} Profile Status"
+
+    @property
+    def native_value(self) -> str:
+        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+        status = str(prefs.get("last_profile_push_status", "idle"))
+        dynamic = bool(prefs.get("dynamic_session_active", False))
+        if dynamic and status == "idle":
+            return "dynamic_ready"
+        return status
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+        return {
+            "dynamic_session_active": bool(prefs.get("dynamic_session_active", False)),
+            "profile_kind": prefs.get("profile_kind"),
+            "profile_purpose": prefs.get("profile_purpose"),
+            "limit": prefs.get("limit"),
+            "setpoint": prefs.get("setpoint"),
+            "discharge_limit": prefs.get("discharge_limit"),
+            "unit": prefs.get("unit"),
+            "operation_mode": prefs.get("operation_mode"),
+            "last_profile_push_at": prefs.get("last_profile_push_at"),
+            "last_profile_push_error": prefs.get("last_profile_push_error"),
+        }
 
     @property
     def device_info(self) -> DeviceInfo:
