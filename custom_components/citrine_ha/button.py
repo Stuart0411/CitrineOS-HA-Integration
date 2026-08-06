@@ -494,10 +494,27 @@ class CitrineStartDynamicSessionButton(CitrineBaseButton):
         if not bool(capabilities.get("supports_dynamic_profiles", False)):
             raise HomeAssistantError("Station does not support OCPP dynamic charging profiles")
 
+        station = self._station()
+        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+        evse_id = int(prefs.get("evse_id", 0))
+        if evse_id < 1:
+            fallback_evse = station.get("defaultEvseId")
+            if fallback_evse is None:
+                for connector in station.get("connectors", []):
+                    candidate = connector.get("evseId") or connector.get("connectorId")
+                    if candidate is not None:
+                        fallback_evse = candidate
+                        break
+            try:
+                evse_id = int(fallback_evse) if fallback_evse is not None else 1
+            except (TypeError, ValueError):
+                evse_id = 1
+
         self.coordinator.update_station_profile_preferences(
             self._station_id,
             profile_kind="Dynamic",
             dynamic_session_active=True,
+            evse_id=evse_id,
         )
 
         try:
