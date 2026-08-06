@@ -270,6 +270,26 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 capabilities.get("default_operation_mode", supported_operation_modes[0])
             )
 
+        if protocol == "ocpp2.1" and requested_kind == "Dynamic":
+            if not requested_operation_mode:
+                if "CentralSetpoint" in supported_operation_modes:
+                    requested_operation_mode = "CentralSetpoint"
+                elif supported_operation_modes:
+                    requested_operation_mode = supported_operation_modes[0]
+
+            # Dynamic profiles are often rejected when using Tx* purposes.
+            dynamic_purpose_candidates = [
+                "ChargingStationExternalConstraints",
+                "ChargingStationMaxProfile",
+                "PriorityCharging",
+                "LocalGeneration",
+            ]
+            if not requested_purpose or requested_purpose in {"TxProfile", "TxDefaultProfile"}:
+                for candidate in dynamic_purpose_candidates:
+                    if not supported_purposes or candidate in supported_purposes:
+                        requested_purpose = candidate
+                        break
+
         requested_periods = call.data.get(ATTR_PROFILE_PERIODS)
         if requested_periods is not None and not isinstance(requested_periods, list):
             raise HomeAssistantError("profile_periods must be a list of objects")

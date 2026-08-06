@@ -515,6 +515,17 @@ class CitrineStartDynamicSessionButton(CitrineBaseButton):
             profile_kind="Dynamic",
             dynamic_session_active=True,
             evse_id=evse_id,
+            profile_purpose=(
+                "ChargingStationExternalConstraints"
+                if "ChargingStationExternalConstraints"
+                in [str(item) for item in capabilities.get("supported_profile_purposes", [])]
+                else capabilities.get("default_profile_purpose", "ChargingStationMaxProfile")
+            ),
+            operation_mode=(
+                "CentralSetpoint"
+                if "CentralSetpoint" in [str(item) for item in capabilities.get("supported_operation_modes", [])]
+                else capabilities.get("default_operation_mode", "ChargingOnly")
+            ),
         )
 
         try:
