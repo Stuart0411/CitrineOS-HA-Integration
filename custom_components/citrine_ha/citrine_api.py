@@ -43,6 +43,24 @@ class CitrineClient:
         self._auth_token = auth_token
         self._verify_ssl = verify_ssl
         self._request_timeout = request_timeout
+        self._profile_id_counter = max(
+            int(datetime.now(UTC).timestamp() * 1000) % 2_000_000_000,
+            1_000_000,
+        )
+
+    def _next_profile_id(self) -> int:
+        """Generate a monotonic profile ID with low collision probability."""
+        now_seed = max(
+            int(datetime.now(UTC).timestamp() * 1000) % 2_000_000_000,
+            1_000_000,
+        )
+        if now_seed <= self._profile_id_counter:
+            now_seed = self._profile_id_counter + 1
+        # Keep within signed 32-bit positive range expected by many backends.
+        if now_seed > 2_147_000_000:
+            now_seed = 1_000_000
+        self._profile_id_counter = now_seed
+        return self._profile_id_counter
 
     @staticmethod
     def normalize_protocol(protocol: str | None) -> str:
@@ -338,6 +356,9 @@ class CitrineClient:
         # Keep caller-provided evseId on first attempt for compatibility.
         # Some backends validate evseId >= 1 even for station-scope profile purposes.
 
+        effective_profile_id = int(profile_id) if profile_id is not None else self._next_profile_id()
+        schedule_id = self._next_profile_id()
+
         payload_variants: list[dict[str, Any]] = []
 
         if protocol == "ocpp1.6":
@@ -353,7 +374,7 @@ class CitrineClient:
             payload_base: dict[str, Any] = {
                 "connectorId": evse_id,
                 "csChargingProfiles": {
-                    "chargingProfileId": profile_id or random.randint(1000, 9999),
+                    "chargingProfileId": effective_profile_id,
                     "stackLevel": stack_level,
                     "chargingProfilePurpose": normalized_purpose,
                     # OCPP 1.6 profile kind support is effectively Absolute for this payload shape.
@@ -403,7 +424,7 @@ class CitrineClient:
                 schedule_periods=profile_periods,
             )
             schedule: dict[str, Any] = {
-                "id": random.randint(1000, 9999),
+                "id": schedule_id,
                 "chargingRateUnit": normalized_unit,
                 "chargingSchedulePeriod": schedule_periods_payload,
             }
@@ -415,7 +436,7 @@ class CitrineClient:
             payload_base = {
                 "evseId": evse_id,
                 "chargingProfile": {
-                    "id": profile_id or random.randint(1000, 9999),
+                    "id": effective_profile_id,
                     "stackLevel": stack_level,
                     "chargingProfilePurpose": normalized_purpose,
                     "chargingProfileKind": effective_kind,
