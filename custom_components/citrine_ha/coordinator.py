@@ -9,7 +9,7 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
     CONF_HASURA_QUERY,
@@ -70,6 +70,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
         active_query = query
+        last_error: HasuraError | None = None
         for _attempt in range(4):
             try:
                 result = await self._hasura_client.query(
@@ -78,15 +79,45 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
                 break
             except HasuraError as err:
+                last_error = err
                 if "not a valid graphql query" in str(err).lower() and active_query != DEFAULT_HASURA_QUERY:
                     active_query = DEFAULT_HASURA_QUERY
                     continue
                 fallback_query = self._query_without_missing_fields(active_query, err)
                 if fallback_query == active_query:
-                    raise UpdateFailed(f"Hasura discovery failed: {err}") from err
+                    break
                 active_query = fallback_query
         else:
-            raise UpdateFailed("Hasura discovery failed after schema fallback retries")
+            pass
+
+        if "result" not in locals():
+            previous_stations: list[dict[str, Any]] = []
+            if self.data and isinstance(self.data.get("stations"), list):
+                previous_stations = [
+                    item for item in self.data.get("stations", []) if isinstance(item, dict)
+                ]
+
+            error_message = "Hasura discovery failed"
+            if last_error is not None:
+                error_message = f"Hasura discovery failed after schema fallback retries: {last_error}"
+
+            _LOGGER.warning(
+                "%s; continuing setup with %s cached stations",
+                error_message,
+                len(previous_stations),
+            )
+
+            if previous_stations:
+                self._refresh_station_caches(previous_stations)
+
+            return {
+                "stations": previous_stations,
+                "connectors": [],
+                "transactions": [],
+                "source": "hasura_error",
+                "hasura_url": self._entry_data.get(CONF_HASURA_URL),
+                "discovery_error": error_message,
+            }
 
         data = result.get("data", {})
         stations = self._extract_stations(data)
