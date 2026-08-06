@@ -318,6 +318,8 @@ class CitrineClient:
     ) -> Any:
         """Apply an explicit charging profile with OCPP-specific structure."""
         protocol = self.normalize_protocol(protocol)
+        if protocol != "ocpp1.6" and evse_id < 1:
+            evse_id = 1
         normalized_unit = unit.upper()
         normalized_purpose = str(profile_purpose or "TxProfile").strip()
         purpose_key = normalized_purpose.lower()
@@ -504,6 +506,8 @@ class CitrineClient:
 
                 # For station- or default-scope profiles, retry at station scope (evseId=0).
                 if (
+                    protocol == "ocpp2.0.1"
+                    and
                     variant.get("evseId") not in (None, 0)
                     and str(cp.get("chargingProfilePurpose", "")).lower()
                     in {
