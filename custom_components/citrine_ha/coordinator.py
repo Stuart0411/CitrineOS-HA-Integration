@@ -68,6 +68,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             CONF_HASURA_QUERY,
             DEFAULT_HASURA_QUERY,
         )
+        query = self._sanitize_discovery_query(query)
 
         active_query = query
         last_error: HasuraError | None = None
@@ -235,6 +236,14 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             field_name, type_name = match.groups()
             updated = CitrineCoordinator._remove_field_from_block(updated, type_name, field_name)
         return " ".join(updated.split())
+
+    @staticmethod
+    def _sanitize_discovery_query(query: str) -> str:
+        """Pre-clean optional fields that are commonly absent across schemas."""
+        sanitized = str(query)
+        # Some deployments do not expose Transactions.idToken.
+        sanitized = re.sub(r"\bidToken\b", "", sanitized, flags=re.IGNORECASE)
+        return " ".join(sanitized.split())
 
     @staticmethod
     def _remove_field_from_block(query: str, type_name: str, field_name: str) -> str:
