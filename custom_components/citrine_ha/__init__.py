@@ -277,14 +277,14 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 elif supported_operation_modes:
                     requested_operation_mode = supported_operation_modes[0]
 
-            # Dynamic profiles are often rejected when using Tx* purposes.
+            # If purpose is omitted, choose a dynamic-safe default.
             dynamic_purpose_candidates = [
                 "ChargingStationExternalConstraints",
                 "ChargingStationMaxProfile",
                 "PriorityCharging",
                 "LocalGeneration",
             ]
-            if not requested_purpose or requested_purpose in {"TxProfile", "TxDefaultProfile"}:
+            if not requested_purpose:
                 for candidate in dynamic_purpose_candidates:
                     if not supported_purposes or candidate in supported_purposes:
                         requested_purpose = candidate
