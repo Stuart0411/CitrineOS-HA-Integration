@@ -229,7 +229,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         updated = query
         for item in error.errors:
             message = item.get("message", "")
-            match = re.search(r"field '([^']+)' not found in type: '([^']+)'", message)
+            match = re.search(r"field ['\"]([^'\"]+)['\"] not found in type: ['\"]([^'\"]+)['\"]", message)
             if not match:
                 continue
             field_name, type_name = match.groups()
@@ -239,15 +239,21 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     @staticmethod
     def _remove_field_from_block(query: str, type_name: str, field_name: str) -> str:
         pattern = re.compile(
-            rf"({re.escape(type_name)}(?:\s*\([^)]*\))?\s*\{{)([^}}]*)(\}})"
+            rf"({re.escape(type_name)}(?:\s*\([^)]*\))?\s*\{{)([^}}]*)(\}})",
+            re.IGNORECASE,
         )
 
         def _replace(match: re.Match[str]) -> str:
             prefix, body, suffix = match.groups()
             fields = [field for field in body.split() if field != field_name]
             return f"{prefix}{' '.join(fields)}{suffix}"
+        updated = pattern.sub(_replace, query, count=1)
+        if updated != query:
+            return updated
 
-        return pattern.sub(_replace, query, count=1)
+        # Fallback: remove the field token globally when block matching fails due to schema aliasing.
+        token_pattern = re.compile(rf"\b{re.escape(field_name)}\b")
+        return token_pattern.sub("", query, count=1)
 
     @staticmethod
     def _extract_connectors(data: dict[str, Any]) -> list[dict[str, Any]]:
