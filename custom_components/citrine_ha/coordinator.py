@@ -560,6 +560,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "ChargingOnly",
                     "ChargingAndDischarging",
                     "DischargingOnly",
+                    "CentralSetpoint",
                 ],
                 "default_operation_mode": "ChargingOnly",
                 "connector_count": connector_count,

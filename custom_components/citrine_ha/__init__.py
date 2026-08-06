@@ -251,6 +251,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         requested_discharge_limit = call.data.get(ATTR_DISCHARGE_LIMIT)
         if requested_discharge_limit is not None:
             requested_discharge_limit = float(requested_discharge_limit)
+            if protocol == "ocpp2.1" and requested_discharge_limit > 0:
+                requested_discharge_limit = -requested_discharge_limit
 
         requested_operation_mode = call.data.get(ATTR_OPERATION_MODE)
         if requested_operation_mode is not None:
@@ -271,6 +273,26 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         requested_periods = call.data.get(ATTR_PROFILE_PERIODS)
         if requested_periods is not None and not isinstance(requested_periods, list):
             raise HomeAssistantError("profile_periods must be a list of objects")
+        if protocol == "ocpp2.1" and isinstance(requested_periods, list):
+            normalized_periods: list[dict[str, Any]] = []
+            for item in requested_periods:
+                if not isinstance(item, dict):
+                    continue
+                normalized_item = dict(item)
+                if "dischargeLimit" in normalized_item:
+                    try:
+                        value = float(normalized_item["dischargeLimit"])
+                        normalized_item["dischargeLimit"] = value if value <= 0 else -value
+                    except (TypeError, ValueError):
+                        normalized_item.pop("dischargeLimit", None)
+                if "discharge_limit" in normalized_item:
+                    try:
+                        value = float(normalized_item["discharge_limit"])
+                        normalized_item["discharge_limit"] = value if value <= 0 else -value
+                    except (TypeError, ValueError):
+                        normalized_item.pop("discharge_limit", None)
+                normalized_periods.append(normalized_item)
+            requested_periods = normalized_periods
 
         requested_evse_id = int(call.data.get(ATTR_EVSE_ID, 0))
         if protocol != "ocpp1.6" and requested_evse_id < 1:
