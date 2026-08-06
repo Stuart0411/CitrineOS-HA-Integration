@@ -26,6 +26,7 @@ from .const import (
     DEFAULT_PROFILE_DISCHARGE_LIMIT,
     DEFAULT_PROFILE_LIMIT,
     DEFAULT_PROFILE_SETPOINT,
+    DEFAULT_PROFILE_STACK_LEVEL,
     SERVICE_SET_STATION_LIMIT,
 )
 from .coordinator import CitrineCoordinator
