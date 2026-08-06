@@ -502,7 +502,7 @@ class CitrineStartDynamicSessionButton(CitrineBaseButton):
         ]
 
         profile_purpose = str(prefs.get("profile_purpose", "")).strip()
-        if profile_purpose in {"", "TxProfile", "TxDefaultProfile"}:
+        if profile_purpose == "":
             profile_purpose = ""
         if profile_purpose and supported_purposes and profile_purpose not in supported_purposes:
             profile_purpose = ""
