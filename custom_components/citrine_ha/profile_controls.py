@@ -69,10 +69,11 @@ def build_profile_service_data(
         or "ocpp2.0.1"
     )
     profile_kind = str(prefs.get("profile_kind", "Absolute")).strip().capitalize()
+    profile_purpose = str(prefs.get("profile_purpose", "TxDefaultProfile")).strip()
     is_ocpp21 = protocol == "ocpp2.1"
     der_strategy = str(prefs.get("der_strategy", "manual")).strip().lower() or "manual"
 
-    if der_strategy != "manual":
+    if der_strategy != "manual" and profile_purpose != "TxProfile":
         if not bool(capabilities.get("supports_dynamic_profiles", False)):
             raise ValueError("Selected DER strategy requires dynamic profile support")
         profile_kind = "Dynamic"
@@ -118,7 +119,7 @@ def build_profile_service_data(
         ATTR_EVSE_ID: evse_id,
         ATTR_DURATION: int(prefs.get("duration", DEFAULT_PROFILE_DURATION)),
         ATTR_STACK_LEVEL: int(prefs.get("stack_level", DEFAULT_PROFILE_STACK_LEVEL)),
-        ATTR_PROFILE_PURPOSE: str(prefs.get("profile_purpose", "TxDefaultProfile")),
+        ATTR_PROFILE_PURPOSE: profile_purpose,
         ATTR_PROFILE_KIND: profile_kind,
     }
 
@@ -143,6 +144,10 @@ def build_profile_service_data(
 
     if transaction_id is not None:
         data[ATTR_TRANSACTION_ID] = str(transaction_id)
+
+    # TxProfile is transaction-bound and most stations expect Absolute kind with startSchedule.
+    if profile_purpose == "TxProfile":
+        data[ATTR_PROFILE_KIND] = "Absolute"
 
     return data
 

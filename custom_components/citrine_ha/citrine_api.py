@@ -424,6 +424,7 @@ class CitrineClient:
                 setpoint=setpoint,
                 discharge_limit=discharge_limit,
                 schedule_periods=profile_periods,
+                operation_mode=operation_mode,
             )
             schedule: dict[str, Any] = {
                 "id": schedule_id,
@@ -432,8 +433,6 @@ class CitrineClient:
             }
             if duration > 0:
                 schedule["duration"] = duration
-            if operation_mode:
-                schedule["operationMode"] = str(operation_mode)
 
             payload_base = {
                 "evseId": evse_id,
@@ -675,6 +674,7 @@ class CitrineClient:
         setpoint: float | None,
         discharge_limit: float | None,
         schedule_periods: list[dict[str, Any]] | None,
+        operation_mode: str | None,
     ) -> list[dict[str, Any]]:
         """Normalize schedule periods for OCPP charging profiles."""
         if not schedule_periods:
@@ -686,6 +686,8 @@ class CitrineClient:
                 period["setpoint"] = round(setpoint, 1)
             if discharge_limit is not None:
                 period["dischargeLimit"] = round(discharge_limit, 1)
+            if operation_mode:
+                period["operationMode"] = str(operation_mode)
             return [period]
 
         normalized: list[dict[str, Any]] = []
@@ -728,6 +730,8 @@ class CitrineClient:
                 period["setpoint"] = round(setpoint, 1)
             if "dischargeLimit" not in period and discharge_limit is not None:
                 period["dischargeLimit"] = round(discharge_limit, 1)
+            if "operationMode" not in period and operation_mode:
+                period["operationMode"] = str(operation_mode)
 
             normalized.append(period)
 
