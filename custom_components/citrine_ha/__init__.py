@@ -354,6 +354,29 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         if max_profile_limit is not None:
             limit_value = min(float(max_profile_limit), limit_value)
 
+        if protocol == "ocpp2.1" and requested_kind == "Dynamic":
+            mode = str(requested_operation_mode or "").strip()
+            if not mode:
+                mode = "CentralSetpoint"
+                requested_operation_mode = mode
+
+            # For setpoint-driven DER modes, ensure setpoint is always present.
+            if mode in {"CentralSetpoint", "ExternalSetpoint"} and requested_setpoint is None:
+                requested_setpoint = float(limit_value)
+
+            # OCPP 2.1 dischargeLimit must be <= 0.
+            if requested_discharge_limit is not None and requested_discharge_limit > 0:
+                requested_discharge_limit = -requested_discharge_limit
+
+            # If setpoint is negative and no explicit discharge limit is provided,
+            # align discharge limit with the setpoint for DER discharging control.
+            if (
+                requested_setpoint is not None
+                and requested_setpoint < 0
+                and requested_discharge_limit is None
+            ):
+                requested_discharge_limit = float(requested_setpoint)
+
         await client.set_charging_profile(
             protocol=protocol,
             station_id=station_id,

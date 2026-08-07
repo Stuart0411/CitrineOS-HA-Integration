@@ -557,12 +557,16 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "supports_profile_setpoint": True,
                 "supports_discharge_limit": True,
                 "supported_operation_modes": [
+                    "Idle",
                     "ChargingOnly",
-                    "ChargingAndDischarging",
-                    "DischargingOnly",
                     "CentralSetpoint",
+                    "ExternalSetpoint",
+                    "ExternalLimits",
+                    "CentralFrequency",
+                    "LocalFrequency",
+                    "LocalLoadBalancing",
                 ],
-                "default_operation_mode": "ChargingOnly",
+                "default_operation_mode": "CentralSetpoint",
                 "connector_count": connector_count,
             }
 
