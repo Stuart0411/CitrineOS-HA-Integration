@@ -37,6 +37,22 @@ from .const import (
 from .coordinator import CitrineCoordinator
 
 
+DER_STRATEGY_OPERATION_MODE: dict[str, str] = {
+    "central_setpoint": "CentralSetpoint",
+    "external_setpoint": "ExternalSetpoint",
+    "external_limits": "ExternalLimits",
+    "frequency_response": "CentralFrequency",
+    "local_load_balancing": "LocalLoadBalancing",
+}
+
+
+def _as_float(value: Any, default: float | None = None) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def build_profile_service_data(
     coordinator: CitrineCoordinator,
     entry: ConfigEntry,
@@ -45,14 +61,21 @@ def build_profile_service_data(
     """Build profile service payload from station preferences and live station context."""
     prefs = coordinator.get_station_profile_preferences(station_id)
     station = _station_record(coordinator, station_id)
+    capabilities = coordinator.get_station_capabilities(station_id)
 
     protocol = str(
         coordinator.get_station_protocol(station_id, station.get("protocol"))
         or station.get("protocol")
         or "ocpp2.0.1"
     )
-    profile_kind = str(prefs.get("profile_kind", "Absolute"))
+    profile_kind = str(prefs.get("profile_kind", "Absolute")).strip().capitalize()
     is_ocpp21 = protocol == "ocpp2.1"
+    der_strategy = str(prefs.get("der_strategy", "manual")).strip().lower() or "manual"
+
+    if der_strategy != "manual":
+        if not bool(capabilities.get("supports_dynamic_profiles", False)):
+            raise ValueError("Selected DER strategy requires dynamic profile support")
+        profile_kind = "Dynamic"
 
     transaction_id = (
         station.get("activeTransactionId")
@@ -61,13 +84,38 @@ def build_profile_service_data(
         or station.get("previousTransactionId")
     )
 
+    evse_id = int(prefs.get("evse_id", 0))
+    if protocol != "ocpp1.6" and evse_id < 1:
+        evse_id = int(station.get("defaultEvseId") or 1)
+
+    limit_value = _as_float(prefs.get("limit"), DEFAULT_PROFILE_LIMIT) or DEFAULT_PROFILE_LIMIT
+    setpoint_value = _as_float(prefs.get("setpoint"), DEFAULT_PROFILE_SETPOINT)
+    discharge_limit_value = _as_float(
+        prefs.get("discharge_limit"),
+        DEFAULT_PROFILE_DISCHARGE_LIMIT,
+    )
+
+    operation_mode = str(prefs.get("operation_mode", DEFAULT_PROFILE_OPERATION_MODE)).strip()
+    if der_strategy in DER_STRATEGY_OPERATION_MODE:
+        operation_mode = DER_STRATEGY_OPERATION_MODE[der_strategy]
+
+    if is_ocpp21 and profile_kind == "Dynamic":
+        if operation_mode in {"CentralSetpoint", "ExternalSetpoint"} and setpoint_value is None:
+            setpoint_value = float(limit_value)
+        if discharge_limit_value is not None and discharge_limit_value > 0:
+            discharge_limit_value = -discharge_limit_value
+        if setpoint_value is not None and setpoint_value < 0 and discharge_limit_value is None:
+            discharge_limit_value = float(setpoint_value)
+        if der_strategy == "external_limits":
+            setpoint_value = None
+
     data: dict[str, Any] = {
         ATTR_ENTRY_ID: entry.entry_id,
         ATTR_STATION_ID: station_id,
         ATTR_PROTOCOL: protocol,
-        ATTR_LIMIT: float(prefs.get("limit", DEFAULT_PROFILE_LIMIT)),
+        ATTR_LIMIT: float(limit_value),
         ATTR_UNIT: str(prefs.get("unit", DEFAULT_PROFILE_UNIT)),
-        ATTR_EVSE_ID: int(prefs.get("evse_id", 0)),
+        ATTR_EVSE_ID: evse_id,
         ATTR_DURATION: int(prefs.get("duration", DEFAULT_PROFILE_DURATION)),
         ATTR_STACK_LEVEL: int(prefs.get("stack_level", DEFAULT_PROFILE_STACK_LEVEL)),
         ATTR_PROFILE_PURPOSE: str(prefs.get("profile_purpose", "TxDefaultProfile")),
@@ -75,13 +123,12 @@ def build_profile_service_data(
     }
 
     if is_ocpp21 or profile_kind == "Dynamic":
-        data[ATTR_SETPOINT] = float(prefs.get("setpoint", DEFAULT_PROFILE_SETPOINT))
-        data[ATTR_DISCHARGE_LIMIT] = float(
-            prefs.get("discharge_limit", DEFAULT_PROFILE_DISCHARGE_LIMIT)
-        )
-        data[ATTR_OPERATION_MODE] = str(
-            prefs.get("operation_mode", DEFAULT_PROFILE_OPERATION_MODE)
-        )
+        if setpoint_value is not None:
+            data[ATTR_SETPOINT] = float(setpoint_value)
+        if discharge_limit_value is not None:
+            data[ATTR_DISCHARGE_LIMIT] = float(discharge_limit_value)
+        if operation_mode:
+            data[ATTR_OPERATION_MODE] = operation_mode
 
     profile_id = prefs.get("profile_id")
     if profile_id is not None:
