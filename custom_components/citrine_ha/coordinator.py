@@ -383,8 +383,8 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 [
                     {
                         "id": conn.get("id"),
-                        "connectorId": conn.get("connectorId") or conn.get("id"),
-                        "evseId": conn.get("evseId") or conn.get("connectorId") or conn.get("id"),
+                        "connectorId": conn.get("connectorId") or conn.get("evseId") or 1,
+                        "evseId": conn.get("evseId") or conn.get("connectorId") or 1,
                         "status": conn.get("status"),
                         "isOnline": conn.get("isOnline"),
                         "updatedAt": conn.get("updatedAt"),

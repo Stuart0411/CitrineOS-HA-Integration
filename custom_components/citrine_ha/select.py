@@ -318,7 +318,7 @@ class CitrineStationProfileEvseSelect(CitrineProfileSelectBase):
         station = self._station()
         values: set[int] = set()
         for connector in station.get("connectors", []):
-            candidate = connector.get("evseId") or connector.get("connectorId") or connector.get("id")
+            candidate = connector.get("evseId") or connector.get("connectorId")
             if candidate is None:
                 continue
             try:
@@ -335,8 +335,7 @@ class CitrineStationProfileEvseSelect(CitrineProfileSelectBase):
         except (TypeError, ValueError):
             pass
 
-        if not values:
-            values.add(1)
+        values.add(1)
 
         return [str(item) for item in sorted(values)]
 
