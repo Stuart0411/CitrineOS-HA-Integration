@@ -262,146 +262,15 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
         self._attr_name = f"{self._station_id} Apply Charging Profile"
 
     async def async_press(self) -> None:
-        station = self._station()
-        protocol = self._client.normalize_protocol(
-            self.coordinator.get_station_protocol(self._station_id, str(station.get("protocol", "")))
-        )
-        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
-        capabilities = self.coordinator.get_station_capabilities(self._station_id)
-
-        requested_unit = str(prefs.get("unit", "W")).upper()
-        allowed_units = [str(unit).upper() for unit in capabilities.get("allowed_units", [])]
-        if allowed_units and requested_unit not in allowed_units:
-            requested_unit = str(capabilities.get("preferred_unit", allowed_units[0])).upper()
-
-        requested_purpose = str(
-            prefs.get(
-                "profile_purpose",
-                capabilities.get("default_profile_purpose", "TxDefaultProfile"),
-            )
-        )
-        requested_kind = str(
-            prefs.get(
-                "profile_kind",
-                capabilities.get("default_profile_kind", "Absolute"),
-            )
-        )
-        supported_purposes = [str(item) for item in capabilities.get("supported_profile_purposes", [])]
-        supported_kinds = [str(item) for item in capabilities.get("supported_profile_kinds", [])]
-        if supported_purposes and requested_purpose not in supported_purposes:
-            requested_purpose = str(capabilities.get("default_profile_purpose", supported_purposes[0]))
-        if supported_kinds and requested_kind not in supported_kinds:
-            requested_kind = str(capabilities.get("default_profile_kind", supported_kinds[0]))
-
-        transaction_id = (
-            station.get("activeTransactionId")
-            or station.get("currentTransactionId")
-            or station.get("transactionId")
-            or station.get("previousTransactionId")
-        )
-        tx_mode = str(prefs.get("profile_tx_mode", "safe_fallback"))
-        if requested_purpose == "TxProfile" and transaction_id is None:
-            if tx_mode == "strict_txprofile":
-                raise HomeAssistantError(
-                    "TxProfile strict mode requires an active transaction id, but no transaction is available"
-                )
-            requested_purpose = str(capabilities.get("default_profile_purpose", "TxDefaultProfile"))
-            if requested_purpose == "TxProfile":
-                requested_purpose = next(
-                    (item for item in supported_purposes if item != "TxProfile"),
-                    "TxDefaultProfile",
-                )
-
-        purpose_key = requested_purpose.lower()
-        tx_for_command = str(transaction_id) if (transaction_id is not None and purpose_key == "txprofile") else None
-
-        limit_value = float(prefs.get("limit", 7000.0))
-        setpoint_value = prefs.get(ATTR_SETPOINT)
-        discharge_limit_value = prefs.get("discharge_limit")
-        operation_mode_value = prefs.get("operation_mode")
-        if setpoint_value is not None:
-            try:
-                setpoint_value = float(setpoint_value)
-            except (TypeError, ValueError):
-                setpoint_value = None
-        if discharge_limit_value is not None:
-            try:
-                discharge_limit_value = max(0.0, float(discharge_limit_value))
-            except (TypeError, ValueError):
-                discharge_limit_value = None
-        if operation_mode_value is not None:
-            operation_mode_value = str(operation_mode_value)
-        profile_periods = prefs.get("profile_periods")
-        if profile_periods is not None and not isinstance(profile_periods, list):
-            profile_periods = None
-
-        sign_mode = str(prefs.get("profile_sign_mode", "normal"))
-        if sign_mode == "invert_negative" and limit_value < 0:
-            limit_value = abs(limit_value)
-        if sign_mode == "invert_negative" and isinstance(setpoint_value, float) and setpoint_value < 0:
-            setpoint_value = abs(setpoint_value)
-
-        supports_bidirectional = bool(capabilities.get("supports_bidirectional_power_transfer", False))
-        if limit_value < 0 and not supports_bidirectional:
-            raise HomeAssistantError(
-                f"Station {self._station_id} does not advertise bidirectional profile support"
-            )
-        min_profile_limit = capabilities.get("min_profile_limit")
-        max_profile_limit = capabilities.get("max_profile_limit")
-        if min_profile_limit is not None:
-            limit_value = max(float(min_profile_limit), limit_value)
-        if max_profile_limit is not None:
-            limit_value = min(float(max_profile_limit), limit_value)
-
-        profile_id = prefs.get("profile_id")
-        evse_id = int(prefs.get("evse_id", 0))
-        duration = int(prefs.get("duration", 300))
-        stack_level = int(prefs.get("stack_level", 1))
-
         try:
-            _LOGGER.warning(
-                "Apply profile requested: station=%s protocol=%s evse=%s limit=%s unit=%s purpose=%s kind=%s tx=%s sign_mode=%s tx_mode=%s",
+            await async_push_profile_update(
+                self._hass_instance,
+                self.coordinator,
+                self._entry,
                 self._station_id,
-                protocol,
-                evse_id,
-                limit_value,
-                requested_unit,
-                requested_purpose,
-                requested_kind,
-                tx_for_command,
-                sign_mode,
-                tx_mode,
             )
-
-            await self._client.set_charging_profile(
-                protocol=protocol,
-                station_id=self._station_id,
-                limit=limit_value,
-                setpoint=setpoint_value,
-                discharge_limit=discharge_limit_value,
-                operation_mode=operation_mode_value,
-                unit=requested_unit,
-                evse_id=evse_id,
-                duration=duration,
-                stack_level=stack_level,
-                profile_id=int(profile_id) if profile_id is not None else None,
-                profile_purpose=requested_purpose,
-                profile_kind=requested_kind,
-                profile_periods=profile_periods,
-                transaction_id=tx_for_command,
-                txprofile_compatibility_fallback=(tx_mode != "strict_txprofile"),
-            )
-            self.coordinator.update_station_profile_preferences(
-                self._station_id,
-                dynamic_session_active=(str(requested_kind).strip().capitalize() == "Dynamic"),
-            )
-            self.coordinator.mark_profile_push_succeeded(self._station_id)
             await self.coordinator.async_request_refresh()
-        except CitrineApiError as err:
-            self.coordinator.mark_profile_push_failed(self._station_id, str(err))
-            raise HomeAssistantError(f"Apply profile command failed: {err}") from err
         except Exception as err:  # noqa: BLE001
-            self.coordinator.mark_profile_push_failed(self._station_id, str(err))
             raise HomeAssistantError(f"Apply profile command failed: {err}") from err
 
 

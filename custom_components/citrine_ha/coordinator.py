@@ -176,6 +176,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "profile_periods": None,
             "profile_sign_mode": "normal",
             "profile_tx_mode": "safe_fallback",
+            "der_strategy": "manual",
             "dynamic_session_active": False,
             "last_profile_push_status": "idle",
             "last_profile_push_at": None,
@@ -469,6 +470,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "profile_periods": None,
                     "profile_sign_mode": "normal",
                     "profile_tx_mode": "safe_fallback",
+                    "der_strategy": "manual",
                     "dynamic_session_active": False,
                     "last_profile_push_status": "idle",
                     "last_profile_push_at": None,
@@ -484,6 +486,8 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     )
                 if "dynamic_session_active" not in existing:
                     existing["dynamic_session_active"] = False
+                if "der_strategy" not in existing:
+                    existing["der_strategy"] = "manual"
                 if "last_profile_push_status" not in existing:
                     existing["last_profile_push_status"] = "idle"
                 if "last_profile_push_at" not in existing:

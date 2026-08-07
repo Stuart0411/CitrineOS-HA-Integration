@@ -306,6 +306,7 @@ class CitrineStationActiveSessionSensor(CoordinatorEntity[CitrineCoordinator], S
             "previous_transaction_id": station.get("previousTransactionId"),
             "next_remote_start_id": station.get("nextRemoteStartId"),
             "dynamic_session_active": bool(prefs.get("dynamic_session_active", False)),
+            "der_strategy": prefs.get("der_strategy", "manual"),
             "profile_kind": prefs.get("profile_kind"),
             "profile_purpose": prefs.get("profile_purpose"),
         }
@@ -399,6 +400,7 @@ class CitrineStationProfileStatusSensor(CoordinatorEntity[CitrineCoordinator], S
         prefs = self.coordinator.get_station_profile_preferences(self._station_id)
         return {
             "dynamic_session_active": bool(prefs.get("dynamic_session_active", False)),
+            "der_strategy": prefs.get("der_strategy", "manual"),
             "profile_kind": prefs.get("profile_kind"),
             "profile_purpose": prefs.get("profile_purpose"),
             "limit": prefs.get("limit"),

@@ -17,6 +17,15 @@ from .coordinator import CitrineCoordinator
 from .profile_controls import async_push_profile_update
 
 
+DER_STRATEGY_OPERATION_MODE: dict[str, str] = {
+    "central_setpoint": "CentralSetpoint",
+    "external_setpoint": "ExternalSetpoint",
+    "external_limits": "ExternalLimits",
+    "frequency_response": "CentralFrequency",
+    "local_load_balancing": "LocalLoadBalancing",
+}
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -40,6 +49,7 @@ async def async_setup_entry(
             entities.append(CitrineStationProfilePurposeSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileKindSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileEvseSelect(coordinator, entry, station))
+            entities.append(CitrineStationDerStrategySelect(coordinator, entry, station))
             entities.append(CitrineStationProfileSignModeSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileTxModeSelect(coordinator, entry, station))
             if bool(capabilities.get("supports_dynamic_profiles", False)):
@@ -223,6 +233,64 @@ class CitrineStationProfileKindSelect(CitrineProfileSelectBase):
         normalized = [str(option).capitalize() for option in options]
         # Keep options stable and unique in case capabilities contain duplicates.
         return list(dict.fromkeys(normalized))
+
+
+class CitrineStationDerStrategySelect(CitrineProfileSelectBase):
+    """Select DER control strategy for OCPP 2.1 dynamic control workflows."""
+
+    _attr_icon = "mdi:transmission-tower"
+
+    def __init__(
+        self,
+        coordinator: CitrineCoordinator,
+        entry: ConfigEntry,
+        station: dict[str, Any],
+    ) -> None:
+        super().__init__(
+            coordinator,
+            entry,
+            station,
+            key="der_strategy",
+            name_suffix="DER Strategy",
+            unique_suffix="der_strategy",
+        )
+
+    @property
+    def options(self) -> list[str]:
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        if not bool(capabilities.get("supports_dynamic_profiles", False)):
+            return ["manual"]
+        return [
+            "manual",
+            "central_setpoint",
+            "external_setpoint",
+            "external_limits",
+            "frequency_response",
+            "local_load_balancing",
+        ]
+
+    async def async_select_option(self, option: str) -> None:
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        if option != "manual" and not bool(capabilities.get("supports_dynamic_profiles", False)):
+            raise HomeAssistantError("DER strategies require dynamic profile support")
+
+        updates: dict[str, Any] = {"der_strategy": option}
+        if option != "manual":
+            updates["profile_kind"] = "Dynamic"
+            mode = DER_STRATEGY_OPERATION_MODE.get(option)
+            if mode:
+                supported_modes = [str(item) for item in capabilities.get("supported_operation_modes", [])]
+                if not supported_modes or mode in supported_modes:
+                    updates["operation_mode"] = mode
+        self.coordinator.update_station_profile_preferences(self._station_id, **updates)
+
+        prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+        profile_kind = str(prefs.get("profile_kind", "")).strip().capitalize()
+        is_dynamic_live = bool(prefs.get("dynamic_session_active", False)) or profile_kind == "Dynamic"
+        if is_dynamic_live:
+            await self._async_push_profile_update()
+
+        self.async_write_ha_state()
 
 
 class CitrineStationProfileEvseSelect(CitrineProfileSelectBase):
