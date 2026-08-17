@@ -31,6 +31,7 @@ This repository now contains a scaffolded Home Assistant custom component for Ci
 - Additional diagnostics sensors for protocol, connector count, session state, and OCPP heartbeat age
 - Integration-level EMS diagnostics sensors for intake totals, accepted count, and rejected count
 - Integration-level EMS telemetry freshness diagnostic sensor (seconds since last successful telemetry fetch)
+- Integration-level EMS telemetry health status sensor (`ok`, `stale`, `error`, `unknown`)
 - Number per station for max limit (W)
 - Start/Stop button entities per station
 - Dedicated charging profile UI entities (numbers, selects, and action buttons) so users can apply/clear profiles from dashboards without manual service calls
@@ -44,6 +45,7 @@ This repository now contains a scaffolded Home Assistant custom component for Ci
 - `citrine_ha.clear_charging_profile`
 - `citrine_ha.sync_discovery_now`
 - `citrine_ha.sync_ems_telemetry_now`
+- `citrine_ha.clear_ems_telemetry_error`
 
 Bidirectional note:
 - `set_charging_profile` supports negative `limit` values for stations that advertise bidirectional profile support in the integration capability cache (typically OCPP 2.x).
@@ -67,6 +69,7 @@ Bidirectional note:
 - Per-station protocol and capability cache guides entity options and command payload selection
 - EMS telemetry consumption via Citrine Data API endpoint `GET /data/<ems-endpoint-prefix>/emsIntakeTelemetry`
 - Options now support `ems_endpoint_prefix`, `ems_telemetry_site_id`, and `ems_telemetry_limit` for telemetry scoping
+- Options now support `ems_telemetry_stale_secs` for telemetry stale detection threshold
 - `sync_ems_telemetry_now` also supports optional per-call overrides for `site_id` and `telemetry_limit`
 - EMS intake total attributes now include `fetched_at` and `last_success_at` timestamps
 

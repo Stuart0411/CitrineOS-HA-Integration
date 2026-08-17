@@ -301,3 +301,12 @@ sync_ems_telemetry_now:
         number:
           min: 1
           max: 2000
+
+clear_ems_telemetry_error:
+  name: Clear EMS telemetry error
+  description: Clear the cached telemetry error state when a transient API failure has already recovered.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:

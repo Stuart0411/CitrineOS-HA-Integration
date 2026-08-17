@@ -51,6 +51,7 @@ async def async_setup_entry(
             CitrineEmsIntakeRejectedSensor(coordinator, entry),
             CitrineEmsIntakeTotalSensor(coordinator, entry),
             CitrineEmsTelemetryFreshnessSensor(coordinator, entry),
+            CitrineEmsTelemetryHealthStatusSensor(coordinator, entry),
         ]
     )
 
@@ -469,6 +470,7 @@ class CitrineEmsIntakeTotalSensor(CoordinatorEntity[CitrineCoordinator], SensorE
             "rejected": int(telemetry.get("rejected", 0) or 0),
             "site_id": telemetry.get("siteId"),
             "limit": int(telemetry.get("limit", 0) or 0),
+            "stale_after_seconds": int(telemetry.get("staleAfterSeconds", 0) or 0),
             "latest_created_at": telemetry.get("latestCreatedAt"),
             "fetched_at": fetched_at,
             "last_success_at": last_success_at,
@@ -513,8 +515,64 @@ class CitrineEmsTelemetryFreshnessSensor(CoordinatorEntity[CitrineCoordinator], 
         return {
             "fetched_at": telemetry.get("fetchedAt"),
             "last_success_at": telemetry.get("lastSuccessAt"),
+            "stale_after_seconds": int(telemetry.get("staleAfterSeconds", 0) or 0),
             "telemetry_error": telemetry.get("error"),
         }
+
+
+class CitrineEmsTelemetryHealthStatusSensor(CoordinatorEntity[CitrineCoordinator], SensorEntity):
+    """Integration-level EMS telemetry health status."""
+
+    _attr_icon = "mdi:heart-pulse"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: CitrineCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_ems_telemetry_health_status"
+        self._attr_name = "Citrine EMS Telemetry Health"
+
+    @property
+    def native_value(self) -> str:
+        telemetry = self.coordinator.data.get("intake_telemetry", {})
+        if telemetry.get("error"):
+            return "error"
+
+        freshness = self._freshness_seconds(telemetry)
+        if freshness is None:
+            return "unknown"
+
+        stale_after_seconds = int(telemetry.get("staleAfterSeconds", 0) or 0)
+        if stale_after_seconds > 0 and freshness > stale_after_seconds:
+            return "stale"
+        return "ok"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        telemetry = self.coordinator.data.get("intake_telemetry", {})
+        return {
+            "freshness_seconds": self._freshness_seconds(telemetry),
+            "stale_after_seconds": int(telemetry.get("staleAfterSeconds", 0) or 0),
+            "fetched_at": telemetry.get("fetchedAt"),
+            "last_success_at": telemetry.get("lastSuccessAt"),
+            "telemetry_error": telemetry.get("error"),
+        }
+
+    @staticmethod
+    def _freshness_seconds(telemetry: dict[str, Any]) -> int | None:
+        last_success_at = telemetry.get("lastSuccessAt")
+        if not last_success_at:
+            return None
+
+        parsed = dt_util.parse_datetime(str(last_success_at))
+        if parsed is None:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt_util.UTC)
+
+        now = dt_util.utcnow()
+        delta = (now - parsed).total_seconds()
+        return max(0, int(delta))
 
 
 class CitrineEmsIntakeAcceptedSensor(CoordinatorEntity[CitrineCoordinator], SensorEntity):

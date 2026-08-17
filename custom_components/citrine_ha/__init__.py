@@ -56,6 +56,7 @@ from .const import (
     SERVICE_STOP_CHARGING,
     SERVICE_SYNC_DISCOVERY_NOW,
     SERVICE_SYNC_EMS_TELEMETRY_NOW,
+    SERVICE_CLEAR_EMS_TELEMETRY_ERROR,
 )
 from .coordinator import CitrineCoordinator
 from .hasura_client import HasuraClient
@@ -385,6 +386,11 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             limit=int(limit) if limit is not None else None,
         )
 
+    async def async_handle_clear_ems_telemetry_error(call: ServiceCall) -> None:
+        ctx = _resolve_context(hass, call)
+        coordinator: CitrineCoordinator = ctx["coordinator"]
+        coordinator.clear_intake_telemetry_error()
+
     _register(
         SERVICE_START_CHARGING,
         async_handle_start,
@@ -500,6 +506,12 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 vol.Optional(ATTR_TELEMETRY_LIMIT): vol.All(vol.Coerce(int), vol.Range(min=1, max=2000)),
             }
         ),
+    )
+
+    _register(
+        SERVICE_CLEAR_EMS_TELEMETRY_ERROR,
+        async_handle_clear_ems_telemetry_error,
+        vol.Schema({vol.Optional(ATTR_ENTRY_ID): str}),
     )
 
 

@@ -16,6 +16,7 @@ from .const import (
     CONF_EMS_ENDPOINT_PREFIX,
     CONF_EMS_TELEMETRY_LIMIT,
     CONF_EMS_TELEMETRY_SITE_ID,
+    CONF_EMS_TELEMETRY_STALE_SECS,
     CONF_HASURA_QUERY,
     CONF_HASURA_URL,
     CONF_SCAN_INTERVAL,
@@ -33,6 +34,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_EMS_ENDPOINT_PREFIX,
     DEFAULT_EMS_TELEMETRY_LIMIT,
+    DEFAULT_EMS_TELEMETRY_STALE_SECS,
 )
 from .hasura_client import HasuraClient, HasuraError
 
@@ -149,6 +151,16 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.async_set_updated_data(current)
         return intake_telemetry
 
+    def clear_intake_telemetry_error(self) -> None:
+        """Clear cached telemetry error without forcing a refetch."""
+        current = dict(self.data or {})
+        telemetry = dict(current.get("intake_telemetry") or {})
+        if not telemetry:
+            return
+        telemetry["error"] = None
+        current["intake_telemetry"] = telemetry
+        self.async_set_updated_data(current)
+
     def _telemetry_defaults(self, tenant_id: int, site_id: str | None) -> dict[str, Any]:
         return {
             "tenantId": tenant_id,
@@ -184,6 +196,19 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except (TypeError, ValueError):
             return DEFAULT_EMS_TELEMETRY_LIMIT
 
+    def telemetry_stale_after_seconds(self) -> int:
+        configured = self._entry_options.get(
+            CONF_EMS_TELEMETRY_STALE_SECS,
+            self._entry_data.get(
+                CONF_EMS_TELEMETRY_STALE_SECS,
+                DEFAULT_EMS_TELEMETRY_STALE_SECS,
+            ),
+        )
+        try:
+            return max(5, min(int(configured), 86400))
+        except (TypeError, ValueError):
+            return DEFAULT_EMS_TELEMETRY_STALE_SECS
+
     async def _fetch_intake_telemetry_with_fallback(
         self,
         tenant_id: int,
@@ -204,6 +229,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             previous_last_success = self.data["intake_telemetry"].get("lastSuccessAt")
 
         intake_telemetry["limit"] = scoped_limit
+        intake_telemetry["staleAfterSeconds"] = self.telemetry_stale_after_seconds()
         intake_telemetry["fetchedAt"] = fetched_at
         intake_telemetry["lastSuccessAt"] = previous_last_success
 
