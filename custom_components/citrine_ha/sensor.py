@@ -50,6 +50,7 @@ async def async_setup_entry(
             CitrineEmsIntakeAcceptedSensor(coordinator, entry),
             CitrineEmsIntakeRejectedSensor(coordinator, entry),
             CitrineEmsIntakeTotalSensor(coordinator, entry),
+            CitrineEmsTelemetryFreshnessSensor(coordinator, entry),
         ]
     )
 
@@ -461,13 +462,57 @@ class CitrineEmsIntakeTotalSensor(CoordinatorEntity[CitrineCoordinator], SensorE
     def extra_state_attributes(self) -> dict[str, Any]:
         telemetry = self.coordinator.data.get("intake_telemetry", {})
         by_reason = telemetry.get("byReasonCode", {})
+        fetched_at = telemetry.get("fetchedAt")
+        last_success_at = telemetry.get("lastSuccessAt")
         return {
             "accepted": int(telemetry.get("accepted", 0) or 0),
             "rejected": int(telemetry.get("rejected", 0) or 0),
             "site_id": telemetry.get("siteId"),
             "limit": int(telemetry.get("limit", 0) or 0),
             "latest_created_at": telemetry.get("latestCreatedAt"),
+            "fetched_at": fetched_at,
+            "last_success_at": last_success_at,
             "by_reason_code": by_reason if isinstance(by_reason, dict) else {},
+            "telemetry_error": telemetry.get("error"),
+        }
+
+
+class CitrineEmsTelemetryFreshnessSensor(CoordinatorEntity[CitrineCoordinator], SensorEntity):
+    """Integration-level EMS telemetry freshness in seconds since last success."""
+
+    _attr_icon = "mdi:timer-sand"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = "s"
+
+    def __init__(self, coordinator: CitrineCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_ems_telemetry_freshness_seconds"
+        self._attr_name = "Citrine EMS Telemetry Freshness"
+
+    @property
+    def native_value(self) -> int | None:
+        telemetry = self.coordinator.data.get("intake_telemetry", {})
+        last_success_at = telemetry.get("lastSuccessAt")
+        if not last_success_at:
+            return None
+
+        parsed = dt_util.parse_datetime(str(last_success_at))
+        if parsed is None:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt_util.UTC)
+
+        now = dt_util.utcnow()
+        delta = (now - parsed).total_seconds()
+        return max(0, int(delta))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        telemetry = self.coordinator.data.get("intake_telemetry", {})
+        return {
+            "fetched_at": telemetry.get("fetchedAt"),
+            "last_success_at": telemetry.get("lastSuccessAt"),
             "telemetry_error": telemetry.get("error"),
         }
 

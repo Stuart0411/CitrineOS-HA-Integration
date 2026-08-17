@@ -158,6 +158,8 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "rejected": 0,
             "byReasonCode": {},
             "latestCreatedAt": None,
+            "fetchedAt": None,
+            "lastSuccessAt": None,
             "error": None,
         }
 
@@ -189,6 +191,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         site_id: str | None = None,
         limit: int | None = None,
     ) -> dict[str, Any]:
+        fetched_at = datetime.now(UTC).isoformat()
         endpoint_prefix = str(
             self._entry_options.get(CONF_EMS_ENDPOINT_PREFIX, DEFAULT_EMS_ENDPOINT_PREFIX)
             or DEFAULT_EMS_ENDPOINT_PREFIX
@@ -196,7 +199,13 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         scoped_site_id = self._telemetry_scope_site(site_id)
         scoped_limit = self._telemetry_scope_limit(limit)
         intake_telemetry = self._telemetry_defaults(tenant_id, scoped_site_id)
+        previous_last_success = None
+        if self.data and isinstance(self.data.get("intake_telemetry"), dict):
+            previous_last_success = self.data["intake_telemetry"].get("lastSuccessAt")
+
         intake_telemetry["limit"] = scoped_limit
+        intake_telemetry["fetchedAt"] = fetched_at
+        intake_telemetry["lastSuccessAt"] = previous_last_success
 
         try:
             intake_telemetry = {
@@ -208,6 +217,8 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         limit=scoped_limit,
                     )
                 ),
+                "fetchedAt": fetched_at,
+                "lastSuccessAt": fetched_at,
                 "error": None,
             }
         except CitrineApiError as err:
