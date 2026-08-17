@@ -1,0 +1,296 @@
+start_charging:
+  name: Start charging
+  description: Start a remote charging transaction on a station.
+  fields:
+    entry_id:
+      required: false
+      example: abcdef123456
+      selector:
+        text:
+    station_id:
+      required: true
+      example: liam
+      selector:
+        text:
+    protocol:
+      required: false
+      example: ocpp2.0.1
+      selector:
+        text:
+    id_tag:
+      required: false
+      example: HA_REMOTE
+      selector:
+        text:
+    evse_id:
+      required: false
+      example: 1
+      selector:
+        number:
+          min: 0
+          max: 999
+
+stop_charging:
+  name: Stop charging
+  description: Stop a remote charging transaction on a station.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
+    station_id:
+      required: true
+      example: liam
+      selector:
+        text:
+    protocol:
+      required: false
+      example: ocpp2.0.1
+      selector:
+        text:
+    transaction_id:
+      required: false
+      example: tx-123
+      selector:
+        text:
+
+set_station_limit:
+  name: Set station limit
+  description: Apply a station-level smart charging limit.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
+    station_id:
+      required: true
+      example: liam
+      selector:
+        text:
+    protocol:
+      required: false
+      selector:
+        text:
+    limit:
+      required: true
+      example: 12000
+      selector:
+        number:
+          min: 0
+          max: 500000
+    unit:
+      required: false
+      example: W
+      selector:
+        select:
+          options:
+            - W
+            - A
+    evse_id:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 999
+    duration:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 86400
+
+set_group_limit:
+  name: Set group limit
+  description: Apply a group cap and split equally across member stations.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
+    group_id:
+      required: true
+      selector:
+        text:
+    station_ids:
+      required: true
+      selector:
+        object:
+    limit:
+      required: true
+      selector:
+        number:
+          min: -500000
+          max: 500000
+    unit:
+      required: false
+      selector:
+        select:
+          options:
+            - W
+            - A
+    duration:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 86400
+
+set_charging_profile:
+  name: Set charging profile
+  description: Set an explicit charging profile, adapting payload shape to each station OCPP version.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
+    station_id:
+      required: true
+      selector:
+        text:
+    protocol:
+      required: false
+      example: ocpp2.0.1
+      selector:
+        text:
+    limit:
+      required: true
+      selector:
+        number:
+          min: -500000
+          max: 500000
+    setpoint:
+      required: false
+      selector:
+        number:
+          min: -500000
+          max: 500000
+    discharge_limit:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 500000
+    operation_mode:
+      required: false
+      selector:
+        select:
+          options:
+            - ChargingOnly
+            - ChargingAndDischarging
+            - DischargingOnly
+    unit:
+      required: false
+      selector:
+        select:
+          options:
+            - W
+            - A
+    evse_id:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 999
+    duration:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 86400
+    transaction_id:
+      required: false
+      selector:
+        text:
+    stack_level:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 999
+    profile_id:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 999999
+    profile_purpose:
+      required: false
+      example: TxProfile
+      selector:
+        text:
+    profile_kind:
+      required: false
+      example: Absolute
+      selector:
+        select:
+          options:
+            - Absolute
+            - Relative
+            - Dynamic
+    profile_periods:
+      required: false
+      selector:
+        object:
+
+clear_charging_profile:
+  name: Clear charging profile
+  description: Clear one or more charging profiles using OCPP-version aware criteria.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
+    station_id:
+      required: true
+      selector:
+        text:
+    protocol:
+      required: false
+      selector:
+        text:
+    evse_id:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 999
+    stack_level:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 999
+    profile_id:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 999999
+    profile_purpose:
+      required: false
+      example: TxProfile
+      selector:
+        text:
+
+sync_discovery_now:
+  name: Sync discovery
+  description: Trigger an immediate Hasura discovery refresh.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
+
+sync_ems_telemetry_now:
+  name: Sync EMS telemetry
+  description: Trigger an immediate EMS intake telemetry refresh from Citrine Data API.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
+    site_id:
+      required: false
+      description: Optional site override for telemetry scope. If omitted, integration option scope is used.
+      selector:
+        text:

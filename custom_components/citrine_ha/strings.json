@@ -1,0 +1,41 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to CitrineOS",
+        "description": "Configure CitrineOS API and optional Hasura discovery.",
+        "data": {
+          "name": "Name",
+          "base_url": "CitrineOS base URL",
+          "tenant_id": "Tenant ID",
+          "auth_token": "Bearer token",
+          "verify_ssl": "Verify TLS certificate",
+          "request_timeout": "Request timeout (seconds)",
+          "hasura_url": "Hasura GraphQL URL (optional)",
+          "hasura_token": "Hasura admin/JWT token (optional)",
+          "hasura_query": "Hasura discovery query",
+          "scan_interval": "Discovery scan interval (seconds)",
+          "default_id_tag": "Default ID tag",
+          "default_evse_id": "Default EVSE ID"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect",
+      "invalid_auth": "Invalid authentication"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "CitrineOS options",
+        "data": {
+          "scan_interval": "Discovery scan interval (seconds)",
+          "hasura_query": "Hasura discovery query",
+          "default_id_tag": "Default ID tag",
+          "default_evse_id": "Default EVSE ID"
+        }
+      }
+    }
+  }
+}

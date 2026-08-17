@@ -1,0 +1,18 @@
+{
+  "domain": "citrine_ha",
+  "name": "CitrineOS HA",
+  "codeowners": [
+    "@ssimpson"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/your-org/citrine-ha",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/your-org/citrine-ha/issues",
+  "loggers": [
+    "custom_components.citrine_ha"
+  ],
+  "requirements": [],
+  "version": "0.1.0"
+}
