@@ -376,7 +376,10 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if not match:
                 continue
             field_name, type_name = match.groups()
-            updated = CitrineCoordinator._remove_field_from_block(updated, type_name, field_name)
+            candidate = CitrineCoordinator._remove_field_from_block(updated, type_name, field_name)
+            if candidate == updated:
+                candidate = CitrineCoordinator._remove_field_token(candidate, field_name)
+            updated = candidate
         return " ".join(updated.split())
 
     @staticmethod
@@ -391,6 +394,11 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return f"{prefix}{' '.join(fields)}{suffix}"
 
         return pattern.sub(_replace, query, count=1)
+
+    @staticmethod
+    def _remove_field_token(query: str, field_name: str) -> str:
+        token_pattern = re.compile(rf"\b{re.escape(field_name)}\b")
+        return token_pattern.sub("", query, count=1)
 
     @staticmethod
     def _extract_connectors(data: dict[str, Any]) -> list[dict[str, Any]]:
