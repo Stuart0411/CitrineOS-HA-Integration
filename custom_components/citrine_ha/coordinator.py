@@ -199,7 +199,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             " firmwareVersion tenantId locationId updatedAt latestOcppMessageTimestamp"
             " }"
             " Connectors(where: {tenantId: {_eq: $tenantId}}) {"
-            " id stationId chargingStationId connectorId evseId status isOnline errorCode updatedAt"
+            " id stationId chargingStationId connectorId evseId status isOnline updatedAt"
             " }"
             "}"
         )
@@ -433,6 +433,12 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if not match:
                 continue
             field_name, type_name = match.groups()
+
+            # If Transactions shape differs, prefer dropping the block so station discovery still works.
+            if type_name == "Transactions":
+                updated = CitrineCoordinator._remove_root_selection_block(updated, "Transactions")
+                continue
+
             candidate = CitrineCoordinator._remove_field_from_block(updated, type_name, field_name)
             if candidate == updated:
                 candidate = CitrineCoordinator._remove_field_token(candidate, field_name)
