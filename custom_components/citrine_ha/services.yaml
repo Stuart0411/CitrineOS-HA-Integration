@@ -294,3 +294,10 @@ sync_ems_telemetry_now:
       description: Optional site override for telemetry scope. If omitted, integration option scope is used.
       selector:
         text:
+    telemetry_limit:
+      required: false
+      description: Optional limit override for telemetry summary rows. If omitted, integration option limit is used.
+      selector:
+        number:
+          min: 1
+          max: 2000

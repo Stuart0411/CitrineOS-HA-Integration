@@ -464,6 +464,8 @@ class CitrineEmsIntakeTotalSensor(CoordinatorEntity[CitrineCoordinator], SensorE
         return {
             "accepted": int(telemetry.get("accepted", 0) or 0),
             "rejected": int(telemetry.get("rejected", 0) or 0),
+            "site_id": telemetry.get("siteId"),
+            "limit": int(telemetry.get("limit", 0) or 0),
             "latest_created_at": telemetry.get("latestCreatedAt"),
             "by_reason_code": by_reason if isinstance(by_reason, dict) else {},
             "telemetry_error": telemetry.get("error"),

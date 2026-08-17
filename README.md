@@ -65,7 +65,8 @@ Bidirectional note:
 - OCPP 2.0.1 `remoteStartId` can be sourced from transactions and incremented per station
 - Per-station protocol and capability cache guides entity options and command payload selection
 - EMS telemetry consumption via Citrine Data API endpoint `GET /data/<ems-endpoint-prefix>/emsIntakeTelemetry`
-- Options now support `ems_endpoint_prefix` and `ems_telemetry_site_id` for telemetry scoping
+- Options now support `ems_endpoint_prefix`, `ems_telemetry_site_id`, and `ems_telemetry_limit` for telemetry scoping
+- `sync_ems_telemetry_now` also supports optional per-call overrides for `site_id` and `telemetry_limit`
 
 ## Hasura query for stations, connectors, and transactions
 

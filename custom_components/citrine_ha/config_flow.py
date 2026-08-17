@@ -16,6 +16,7 @@ from .const import (
     CONF_DEFAULT_EVSE_ID,
     CONF_DEFAULT_ID_TAG,
     CONF_EMS_ENDPOINT_PREFIX,
+    CONF_EMS_TELEMETRY_LIMIT,
     CONF_EMS_TELEMETRY_SITE_ID,
     CONF_HASURA_QUERY,
     CONF_HASURA_TOKEN,
@@ -28,6 +29,7 @@ from .const import (
     DEFAULT_DEFAULT_EVSE_ID,
     DEFAULT_DEFAULT_ID_TAG,
     DEFAULT_EMS_ENDPOINT_PREFIX,
+    DEFAULT_EMS_TELEMETRY_LIMIT,
     DEFAULT_HASURA_QUERY,
     DEFAULT_NAME,
     DEFAULT_REQUEST_TIMEOUT,
@@ -180,6 +182,13 @@ class CitrineOptionsFlow(config_entries.OptionsFlow):
                         CONF_EMS_TELEMETRY_SITE_ID,
                         default=options.get(CONF_EMS_TELEMETRY_SITE_ID, ""),
                     ): str,
+                    vol.Optional(
+                        CONF_EMS_TELEMETRY_LIMIT,
+                        default=options.get(
+                            CONF_EMS_TELEMETRY_LIMIT,
+                            data.get(CONF_EMS_TELEMETRY_LIMIT, DEFAULT_EMS_TELEMETRY_LIMIT),
+                        ),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=2000)),
                 }
             ),
         )

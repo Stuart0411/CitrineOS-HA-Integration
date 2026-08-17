@@ -14,6 +14,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .citrine_api import CitrineApiError, CitrineClient
 from .const import (
     CONF_EMS_ENDPOINT_PREFIX,
+    CONF_EMS_TELEMETRY_LIMIT,
     CONF_EMS_TELEMETRY_SITE_ID,
     CONF_HASURA_QUERY,
     CONF_HASURA_URL,
@@ -31,6 +32,7 @@ from .const import (
     DEFAULT_PROFILE_UNIT,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_EMS_ENDPOINT_PREFIX,
+    DEFAULT_EMS_TELEMETRY_LIMIT,
 )
 from .hasura_client import HasuraClient, HasuraError
 
@@ -129,10 +131,18 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "hasura_url": self._entry_data.get(CONF_HASURA_URL),
         }
 
-    async def async_refresh_intake_telemetry(self, site_id: str | None = None) -> dict[str, Any]:
+    async def async_refresh_intake_telemetry(
+        self,
+        site_id: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
         """Refresh only EMS intake telemetry and push coordinator update."""
         tenant_id = int(self._entry_data[CONF_TENANT_ID])
-        intake_telemetry = await self._fetch_intake_telemetry_with_fallback(tenant_id, site_id=site_id)
+        intake_telemetry = await self._fetch_intake_telemetry_with_fallback(
+            tenant_id,
+            site_id=site_id,
+            limit=limit,
+        )
 
         current = dict(self.data or {})
         current["intake_telemetry"] = intake_telemetry
@@ -159,18 +169,34 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return str(configured).strip()
         return None
 
+    def _telemetry_scope_limit(self, limit: int | None = None) -> int:
+        if limit is not None:
+            return max(1, min(int(limit), 2000))
+
+        configured = self._entry_options.get(
+            CONF_EMS_TELEMETRY_LIMIT,
+            self._entry_data.get(CONF_EMS_TELEMETRY_LIMIT, DEFAULT_EMS_TELEMETRY_LIMIT),
+        )
+        try:
+            return max(1, min(int(configured), 2000))
+        except (TypeError, ValueError):
+            return DEFAULT_EMS_TELEMETRY_LIMIT
+
     async def _fetch_intake_telemetry_with_fallback(
         self,
         tenant_id: int,
         *,
         site_id: str | None = None,
+        limit: int | None = None,
     ) -> dict[str, Any]:
         endpoint_prefix = str(
             self._entry_options.get(CONF_EMS_ENDPOINT_PREFIX, DEFAULT_EMS_ENDPOINT_PREFIX)
             or DEFAULT_EMS_ENDPOINT_PREFIX
         )
         scoped_site_id = self._telemetry_scope_site(site_id)
+        scoped_limit = self._telemetry_scope_limit(limit)
         intake_telemetry = self._telemetry_defaults(tenant_id, scoped_site_id)
+        intake_telemetry["limit"] = scoped_limit
 
         try:
             intake_telemetry = {
@@ -179,6 +205,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     await self._citrine_client.get_ems_intake_telemetry(
                         endpoint_prefix=endpoint_prefix,
                         site_id=scoped_site_id,
+                        limit=scoped_limit,
                     )
                 ),
                 "error": None,

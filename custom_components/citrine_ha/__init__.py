@@ -34,6 +34,7 @@ from .const import (
     ATTR_UNIT,
     ATTR_SETPOINT,
     ATTR_SITE_ID,
+    ATTR_TELEMETRY_LIMIT,
     CONF_AUTH_TOKEN,
     CONF_BASE_URL,
     CONF_DEFAULT_EVSE_ID,
@@ -378,7 +379,11 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         ctx = _resolve_context(hass, call)
         coordinator: CitrineCoordinator = ctx["coordinator"]
         site_id = call.data.get(ATTR_SITE_ID)
-        await coordinator.async_refresh_intake_telemetry(site_id=str(site_id) if site_id else None)
+        limit = call.data.get(ATTR_TELEMETRY_LIMIT)
+        await coordinator.async_refresh_intake_telemetry(
+            site_id=str(site_id) if site_id else None,
+            limit=int(limit) if limit is not None else None,
+        )
 
     _register(
         SERVICE_START_CHARGING,
@@ -492,6 +497,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             {
                 vol.Optional(ATTR_ENTRY_ID): str,
                 vol.Optional(ATTR_SITE_ID): str,
+                vol.Optional(ATTR_TELEMETRY_LIMIT): vol.All(vol.Coerce(int), vol.Range(min=1, max=2000)),
             }
         ),
     )
