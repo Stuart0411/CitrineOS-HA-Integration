@@ -85,6 +85,8 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
         active_query = query
+        result: dict[str, Any] | None = None
+        last_hasura_error: HasuraError | None = None
         for _attempt in range(4):
             try:
                 result = await self._hasura_client.query(
@@ -93,15 +95,21 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
                 break
             except HasuraError as err:
+                last_hasura_error = err
                 if "not a valid graphql query" in str(err).lower() and active_query != DEFAULT_HASURA_QUERY:
                     active_query = DEFAULT_HASURA_QUERY
                     continue
                 fallback_query = self._query_without_missing_fields(active_query, err)
                 if fallback_query == active_query:
-                    raise UpdateFailed(f"Hasura discovery failed: {err}") from err
+                    break
                 active_query = fallback_query
-        else:
-            raise UpdateFailed("Hasura discovery failed after schema fallback retries")
+
+        if result is None:
+            message = "Hasura discovery failed after schema fallback retries"
+            if last_hasura_error is not None:
+                message = f"Hasura discovery failed: {last_hasura_error}"
+            _LOGGER.warning("%s. Falling back to cached or empty discovery state.", message)
+            return self._fallback_discovery_payload(intake_telemetry, message)
 
         data = result.get("data", {})
         stations = self._extract_stations(data)
@@ -131,6 +139,28 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "intake_telemetry": intake_telemetry,
             "source": "hasura",
             "hasura_url": self._entry_data.get(CONF_HASURA_URL),
+        }
+
+    def _fallback_discovery_payload(
+        self,
+        intake_telemetry: dict[str, Any],
+        message: str,
+    ) -> dict[str, Any]:
+        previous = self.data or {}
+        stations = [item for item in previous.get("stations", []) if isinstance(item, dict)]
+        connectors = [item for item in previous.get("connectors", []) if isinstance(item, dict)]
+        transactions = [
+            item for item in previous.get("transactions", []) if isinstance(item, dict)
+        ]
+
+        return {
+            "stations": stations,
+            "connectors": connectors,
+            "transactions": transactions,
+            "intake_telemetry": intake_telemetry,
+            "source": "hasura_error",
+            "hasura_url": self._entry_data.get(CONF_HASURA_URL),
+            "hasura_error": message,
         }
 
     async def async_refresh_intake_telemetry(
@@ -248,8 +278,16 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "error": None,
             }
         except CitrineApiError as err:
-            intake_telemetry["error"] = str(err)
-            _LOGGER.warning("EMS intake telemetry unavailable: %s", err)
+            error_message = str(err)
+            intake_telemetry["error"] = error_message
+            if "failed (404)" in error_message and "emsIntakeTelemetry" in error_message:
+                _LOGGER.info(
+                    "EMS intake telemetry endpoint unavailable (404). "
+                    "Check Citrine EMS module enablement and ems_endpoint_prefix. %s",
+                    err,
+                )
+            else:
+                _LOGGER.warning("EMS intake telemetry unavailable: %s", err)
 
         return intake_telemetry
 
