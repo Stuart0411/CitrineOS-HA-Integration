@@ -51,7 +51,7 @@ DEFAULT_HASURA_QUERY = (
     " id stationId chargingStationId connectorId evseId status isOnline errorCode updatedAt"
     " }"
     " Transactions(where: {tenantId: {_eq: $tenantId}}, order_by: {updatedAt: desc}, limit: 500) {"
-    " id stationId chargingStationId transactionId idToken isActive startedAt stoppedAt updatedAt"
+    " id stationId chargingStationId transactionId isActive startedAt stoppedAt updatedAt"
     " }"
     "}"
 )

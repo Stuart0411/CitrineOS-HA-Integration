@@ -108,6 +108,31 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             message = "Hasura discovery failed after schema fallback retries"
             if last_hasura_error is not None:
                 message = f"Hasura discovery failed: {last_hasura_error}"
+            minimal_result = await self._try_minimal_discovery_query(tenant_id)
+            if minimal_result is not None:
+                _LOGGER.warning(
+                    "%s. Falling back to minimal discovery query without Transactions.",
+                    message,
+                )
+                data = minimal_result.get("data", {})
+                stations = self._extract_stations(data)
+                connectors = self._extract_connectors(data)
+                merged_stations = self._merge_station_state(
+                    stations=stations,
+                    connectors=connectors,
+                    transactions=[],
+                )
+                self._refresh_station_caches(merged_stations)
+                return {
+                    "stations": merged_stations,
+                    "connectors": connectors,
+                    "transactions": [],
+                    "intake_telemetry": intake_telemetry,
+                    "source": "hasura_minimal",
+                    "hasura_url": self._entry_data.get(CONF_HASURA_URL),
+                    "hasura_error": message,
+                }
+
             _LOGGER.warning("%s. Falling back to cached or empty discovery state.", message)
             return self._fallback_discovery_payload(intake_telemetry, message)
 
@@ -162,6 +187,31 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "hasura_url": self._entry_data.get(CONF_HASURA_URL),
             "hasura_error": message,
         }
+
+    async def _try_minimal_discovery_query(self, tenant_id: int) -> dict[str, Any] | None:
+        if not self._hasura_client:
+            return None
+
+        minimal_query = (
+            "query ChargingStations($tenantId: Int!) {"
+            " ChargingStations(where: {tenantId: {_eq: $tenantId}}) {"
+            " id protocol isOnline chargePointVendor chargePointModel chargePointSerialNumber"
+            " firmwareVersion tenantId locationId updatedAt latestOcppMessageTimestamp"
+            " }"
+            " Connectors(where: {tenantId: {_eq: $tenantId}}) {"
+            " id stationId chargingStationId connectorId evseId status isOnline errorCode updatedAt"
+            " }"
+            "}"
+        )
+
+        try:
+            return await self._hasura_client.query(
+                minimal_query,
+                variables={"tenantId": tenant_id},
+            )
+        except HasuraError as err:
+            _LOGGER.debug("Minimal Hasura discovery query also failed: %s", err)
+            return None
 
     async def async_refresh_intake_telemetry(
         self,
@@ -372,6 +422,13 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         updated = query
         for item in error.errors:
             message = item.get("message", "")
+
+            missing_selection = re.search(r"missing selection set for '([^']+)'", message)
+            if missing_selection:
+                block_name = missing_selection.group(1)
+                updated = CitrineCoordinator._remove_root_selection_block(updated, block_name)
+                continue
+
             match = re.search(r"field '([^']+)' not found in type: '([^']+)'", message)
             if not match:
                 continue
@@ -399,6 +456,13 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _remove_field_token(query: str, field_name: str) -> str:
         token_pattern = re.compile(rf"\b{re.escape(field_name)}\b")
         return token_pattern.sub("", query, count=1)
+
+    @staticmethod
+    def _remove_root_selection_block(query: str, block_name: str) -> str:
+        block_pattern = re.compile(
+            rf"\b{re.escape(block_name)}(?:\s*\([^)]*\))?\s*\{{[^{{}}]*\}}"
+        )
+        return block_pattern.sub("", query, count=1)
 
     @staticmethod
     def _extract_connectors(data: dict[str, Any]) -> list[dict[str, Any]]:
