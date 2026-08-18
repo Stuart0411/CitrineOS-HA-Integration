@@ -41,7 +41,7 @@ async def async_setup_entry(
             entities.append(CitrineStationProfileKindSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileSignModeSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileTxModeSelect(coordinator, entry, station))
-            if bool(capabilities.get("supports_dynamic_profiles", False)):
+            if bool(capabilities.get("supports_operation_mode_control", False)):
                 entities.append(CitrineStationProfileOperationModeSelect(coordinator, entry, station))
         return entities
 
