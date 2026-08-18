@@ -119,6 +119,22 @@ class CitrineBaseButton(CoordinatorEntity[CitrineCoordinator], ButtonEntity):
         return {"id": self._station_id}
 
 
+class CitrineProfileControlButtonBase(CitrineBaseButton):
+    """Base class for EMS profile-control buttons with capability gating."""
+
+    @property
+    def available(self) -> bool:
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        return bool(capabilities.get("supports_ems_profile_control", False))
+
+    def _assert_ems_profile_control_supported(self) -> None:
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        if bool(capabilities.get("supports_ems_profile_control", False)):
+            return
+        reason = capabilities.get("ems_profile_support_reason") or "EMS charging-profile control is not supported for this station"
+        raise HomeAssistantError(str(reason))
+
+
 class CitrineStartChargingButton(CitrineBaseButton):
     """Start charging using default id tag and EVSE."""
 
@@ -244,7 +260,7 @@ class CitrineStopChargingButton(CitrineBaseButton):
             raise HomeAssistantError(f"Stop command failed: {err}") from err
 
 
-class CitrineApplyChargingProfileButton(CitrineBaseButton):
+class CitrineApplyChargingProfileButton(CitrineProfileControlButtonBase):
     """Apply station charging profile from profile control entities."""
 
     _attr_icon = "mdi:chart-timeline-variant-shimmer"
@@ -262,6 +278,7 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
         self._attr_name = f"{self._station_id} Apply Charging Profile"
 
     async def async_press(self) -> None:
+        self._assert_ems_profile_control_supported()
         station = self._station()
         protocol = self._client.normalize_protocol(
             self.coordinator.get_station_protocol(self._station_id, str(station.get("protocol", "")))
@@ -405,7 +422,7 @@ class CitrineApplyChargingProfileButton(CitrineBaseButton):
             raise HomeAssistantError(f"Apply profile command failed: {err}") from err
 
 
-class CitrineClearChargingProfileButton(CitrineBaseButton):
+class CitrineClearChargingProfileButton(CitrineProfileControlButtonBase):
     """Clear station charging profile from profile control entities."""
 
     _attr_icon = "mdi:chart-timeline-variant"
@@ -423,6 +440,7 @@ class CitrineClearChargingProfileButton(CitrineBaseButton):
         self._attr_name = f"{self._station_id} Clear Charging Profile"
 
     async def async_press(self) -> None:
+        self._assert_ems_profile_control_supported()
         station = self._station()
         protocol = self._client.normalize_protocol(
             self.coordinator.get_station_protocol(self._station_id, str(station.get("protocol", "")))
@@ -472,7 +490,7 @@ class CitrineClearChargingProfileButton(CitrineBaseButton):
             raise HomeAssistantError(f"Clear profile command failed: {err}") from err
 
 
-class CitrineStartDynamicSessionButton(CitrineBaseButton):
+class CitrineStartDynamicSessionButton(CitrineProfileControlButtonBase):
     """Start a dynamic profile session and enable live preference pushes."""
 
     _attr_icon = "mdi:chart-bell-curve-cumulative"
@@ -490,6 +508,7 @@ class CitrineStartDynamicSessionButton(CitrineBaseButton):
         self._attr_name = f"{self._station_id} Start Dynamic Session"
 
     async def async_press(self) -> None:
+        self._assert_ems_profile_control_supported()
         capabilities = self.coordinator.get_station_capabilities(self._station_id)
         if not bool(capabilities.get("supports_dynamic_profiles", False)):
             raise HomeAssistantError("Station does not support OCPP dynamic charging profiles")
@@ -512,7 +531,7 @@ class CitrineStartDynamicSessionButton(CitrineBaseButton):
             raise HomeAssistantError(f"Start dynamic session failed: {err}") from err
 
 
-class CitrineStopDynamicSessionButton(CitrineBaseButton):
+class CitrineStopDynamicSessionButton(CitrineProfileControlButtonBase):
     """Stop dynamic profile session and clear active dynamic profile."""
 
     _attr_icon = "mdi:chart-bell-curve-cumulative-off"
@@ -530,6 +549,7 @@ class CitrineStopDynamicSessionButton(CitrineBaseButton):
         self._attr_name = f"{self._station_id} Stop Dynamic Session"
 
     async def async_press(self) -> None:
+        self._assert_ems_profile_control_supported()
         station = self._station()
         protocol = self._client.normalize_protocol(
             self.coordinator.get_station_protocol(self._station_id, str(station.get("protocol", "")))

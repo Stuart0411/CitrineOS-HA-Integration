@@ -29,6 +29,7 @@ This repository now contains a scaffolded Home Assistant custom component for Ci
 - Polls Hasura with GraphQL and maps discovered stations into HA devices
 - Sensor per station for online state + metadata
 - Additional diagnostics sensors for protocol, connector count, session state, and OCPP heartbeat age
+- Additional per-station EMS diagnostic sensor for charging-profile eligibility (`eligible` / `ineligible`)
 - Integration-level EMS diagnostics sensors for intake totals, accepted count, and rejected count
 - Integration-level EMS telemetry freshness diagnostic sensor (seconds since last successful telemetry fetch)
 - Integration-level EMS telemetry health status sensor (`ok`, `stale`, `error`, `unknown`)
@@ -67,11 +68,62 @@ Bidirectional note:
 - Retry workarounds for common profile issues (connector `0` rejection on OCPP 1.6, unit compatibility fallback)
 - OCPP 2.0.1 `remoteStartId` can be sourced from transactions and incremented per station
 - Per-station protocol and capability cache guides entity options and command payload selection
+- EMS profile-control entities are now guarded by the same CSMS-facing support rules used by the EMS policy slice
+- If a charger is ineligible for EMS profile control, the `EMS Profile Eligibility` diagnostic sensor exposes the exact support reason and the profile-control entities are unavailable in HA
 - EMS telemetry consumption via Citrine Data API endpoint `GET /data/<ems-endpoint-prefix>/emsIntakeTelemetry`
 - Options now support `ems_endpoint_prefix`, `ems_telemetry_site_id`, and `ems_telemetry_limit` for telemetry scoping
 - Options now support `ems_telemetry_stale_secs` for telemetry stale detection threshold
 - `sync_ems_telemetry_now` also supports optional per-call overrides for `site_id` and `telemetry_limit`
 - EMS intake total attributes now include `fetched_at` and `last_success_at` timestamps
+
+EMS profile eligibility rules:
+- `eligible` means the integration believes the charger can participate in Citrine EMS charging-profile control.
+- `ineligible` means one of the current conservative guards blocked the charger, for example:
+- protocol is not `ocpp2.0.1` or `ocpp2.1`
+- station advertised capabilities exist but do not include `ChargingProfileCapable`
+- the integration could not derive a compatible EMS profile-control path
+
+The `EMS Profile Eligibility` sensor attributes include:
+- `ems_profile_support_reason`
+- `advertised_capabilities`
+- `normalized_protocol`
+- `supports_dynamic_profiles`
+- `supports_set_charging_profile`
+
+Example Lovelace card:
+
+```yaml
+type: entities
+title: Citrine EMS Profile Eligibility
+entities:
+  - entity: sensor.station_a_ems_profile_eligibility
+    name: Station A EMS Profile Eligibility
+  - entity: sensor.station_b_ems_profile_eligibility
+    name: Station B EMS Profile Eligibility
+```
+
+If you want to expose the support reason inline, use an attribute row card or template entity. For example with Mushroom template cards:
+
+```yaml
+type: vertical-stack
+cards:
+  - type: entities
+    title: Citrine EMS Profile Eligibility
+    entities:
+      - entity: sensor.station_a_ems_profile_eligibility
+      - entity: sensor.station_b_ems_profile_eligibility
+  - type: markdown
+    content: >
+      **Station A reason:**
+      {{ state_attr('sensor.station_a_ems_profile_eligibility', 'ems_profile_support_reason') or 'Eligible' }}
+
+      **Station B reason:**
+      {{ state_attr('sensor.station_b_ems_profile_eligibility', 'ems_profile_support_reason') or 'Eligible' }}
+```
+
+Entity naming note:
+- Replace `station_a` / `station_b` with your actual Home Assistant entity ids.
+- The integration unique id suffix for this sensor is `_ems_profile_eligibility`.
 
 ## Hasura query for stations, connectors, and transactions
 
@@ -91,6 +143,7 @@ query ChargingStations($tenantId: Int!) {
     locationId
     latestOcppMessageTimestamp
     updatedAt
+    capabilities
   }
 
   Connectors(where: {tenantId: {_eq: $tenantId}}) {
@@ -120,6 +173,7 @@ query ChargingStations($tenantId: Int!) {
 
 Notes:
 - The integration now merges station + connector + transaction rows.
+- Include `capabilities` in the station query if your Hasura schema exposes it; this allows HA to distinguish explicit lack of charging-profile support from missing metadata.
 - Stop button and stop service can use discovered `active/current/previous` transaction id automatically.
 - Start command can auto-select EVSE from connector rows.
 - For OCPP 2.0.1, `remoteStartId` is derived from station transactions as `max(transactionId) + 1` when numeric, then incremented after each start.

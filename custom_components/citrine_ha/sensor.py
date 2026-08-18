@@ -38,6 +38,7 @@ async def async_setup_entry(
             entities.append(CitrineStationOnlineSensor(coordinator, entry, station))
             entities.append(CitrineStationTransactionSensor(coordinator, entry, station))
             entities.append(CitrineStationProtocolSensor(coordinator, entry, station))
+            entities.append(CitrineStationEmsProfileEligibilitySensor(coordinator, entry, station))
             entities.append(CitrineStationConnectorCountSensor(coordinator, entry, station))
             entities.append(CitrineStationActiveSessionSensor(coordinator, entry, station))
             entities.append(CitrineStationProfileStatusSensor(coordinator, entry, station))
@@ -214,6 +215,66 @@ class CitrineStationProtocolSensor(CoordinatorEntity[CitrineCoordinator], Sensor
         station = self._station()
         protocol = station.get("protocol")
         return str(protocol) if protocol else "unknown"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _device_info(self._entry, self._station())
+
+    def _station(self) -> dict[str, Any]:
+        for station in self.coordinator.data.get("stations", []):
+            if str(station.get("id")) == self._station_id:
+                return station
+        return {"id": self._station_id}
+
+
+class CitrineStationEmsProfileEligibilitySensor(
+    CoordinatorEntity[CitrineCoordinator], SensorEntity
+):
+    """Diagnostic sensor for CSMS EMS charging-profile eligibility."""
+
+    _attr_icon = "mdi:clipboard-check-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: CitrineCoordinator,
+        entry: ConfigEntry,
+        station: dict[str, Any],
+    ) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._station_id = str(station["id"])
+        self._attr_unique_id = f"{entry.entry_id}_{self._station_id}_ems_profile_eligibility"
+        self._attr_name = f"{self._station_id} EMS Profile Eligibility"
+
+    @property
+    def native_value(self) -> str:
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        return (
+            "eligible"
+            if bool(capabilities.get("supports_ems_profile_control", False))
+            else "ineligible"
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        station = self._station()
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        return {
+            "protocol": station.get("protocol"),
+            "normalized_protocol": self.coordinator.get_station_protocol(
+                self._station_id,
+                str(station.get("protocol") or ""),
+            ),
+            "ems_profile_support_reason": capabilities.get("ems_profile_support_reason"),
+            "supports_dynamic_profiles": bool(
+                capabilities.get("supports_dynamic_profiles", False)
+            ),
+            "supports_set_charging_profile": bool(
+                capabilities.get("supports_set_charging_profile", False)
+            ),
+            "advertised_capabilities": capabilities.get("advertised_capabilities", []),
+        }
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -406,6 +467,7 @@ class CitrineStationProfileStatusSensor(CoordinatorEntity[CitrineCoordinator], S
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         prefs = self.coordinator.get_station_profile_preferences(self._station_id)
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
         return {
             "dynamic_session_active": bool(prefs.get("dynamic_session_active", False)),
             "profile_kind": prefs.get("profile_kind"),
@@ -417,6 +479,14 @@ class CitrineStationProfileStatusSensor(CoordinatorEntity[CitrineCoordinator], S
             "operation_mode": prefs.get("operation_mode"),
             "last_profile_push_at": prefs.get("last_profile_push_at"),
             "last_profile_push_error": prefs.get("last_profile_push_error"),
+            "ems_profile_supported": bool(
+                capabilities.get("supports_ems_profile_control", False)
+            ),
+            "ems_profile_support_reason": capabilities.get("ems_profile_support_reason"),
+            "advertised_capabilities": capabilities.get("advertised_capabilities", []),
+            "supports_dynamic_profiles": bool(
+                capabilities.get("supports_dynamic_profiles", False)
+            ),
         }
 
     @property

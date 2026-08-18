@@ -86,10 +86,11 @@ class CitrineProfileSelectBase(CoordinatorEntity[CitrineCoordinator], SelectEnti
 
     @property
     def available(self) -> bool:
-        # Profile controls are writable preferences and should remain available.
-        return True
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        return bool(capabilities.get("supports_ems_profile_control", False))
 
     async def async_select_option(self, option: str) -> None:
+        self._assert_ems_profile_control_supported()
         self.coordinator.update_station_profile_preferences(self._station_id, **{self._key: option})
         prefs = self.coordinator.get_station_profile_preferences(self._station_id)
         profile_kind = str(prefs.get("profile_kind", "")).strip().capitalize()
@@ -102,6 +103,13 @@ class CitrineProfileSelectBase(CoordinatorEntity[CitrineCoordinator], SelectEnti
         }:
             await self._async_push_profile_update()
         self.async_write_ha_state()
+
+    def _assert_ems_profile_control_supported(self) -> None:
+        capabilities = self.coordinator.get_station_capabilities(self._station_id)
+        if bool(capabilities.get("supports_ems_profile_control", False)):
+            return
+        reason = capabilities.get("ems_profile_support_reason") or "EMS charging-profile control is not supported for this station"
+        raise HomeAssistantError(str(reason))
 
     async def _async_push_profile_update(self) -> None:
         try:

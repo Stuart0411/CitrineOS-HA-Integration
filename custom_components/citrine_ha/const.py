@@ -45,7 +45,7 @@ DEFAULT_HASURA_QUERY = (
     "query ChargingStations($tenantId: Int!) {"
     " ChargingStations(where: {tenantId: {_eq: $tenantId}}) {"
     " id protocol isOnline chargePointVendor chargePointModel chargePointSerialNumber"
-    " firmwareVersion tenantId locationId updatedAt latestOcppMessageTimestamp"
+    " firmwareVersion tenantId locationId updatedAt latestOcppMessageTimestamp capabilities"
     " }"
     " Connectors(where: {tenantId: {_eq: $tenantId}}) {"
     " id stationId chargingStationId connectorId evseId status isOnline errorCode updatedAt"

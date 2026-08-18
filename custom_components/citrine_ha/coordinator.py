@@ -196,7 +196,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "query ChargingStations($tenantId: Int!) {"
             " ChargingStations(where: {tenantId: {_eq: $tenantId}}) {"
             " id protocol isOnline chargePointVendor chargePointModel chargePointSerialNumber"
-            " firmwareVersion tenantId locationId updatedAt latestOcppMessageTimestamp"
+            " firmwareVersion tenantId locationId updatedAt latestOcppMessageTimestamp capabilities"
             " }"
             " Connectors(where: {tenantId: {_eq: $tenantId}}) {"
             " id stationId chargingStationId connectorId evseId status isOnline updatedAt"
@@ -691,9 +691,14 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _derive_capabilities(station: dict[str, Any], protocol: str) -> dict[str, Any]:
         connectors = station.get("connectors", [])
         connector_count = len(connectors)
+        advertised_capabilities = [
+            str(item)
+            for item in (station.get("capabilities") or [])
+            if isinstance(item, str) and str(item).strip()
+        ]
 
         if protocol == "ocpp1.6":
-            return {
+            capabilities = {
                 "supports_remote_start": True,
                 "supports_remote_stop": True,
                 "supports_set_charging_profile": True,
@@ -714,9 +719,15 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "supports_transaction_profile": True,
                 "connector_count": connector_count,
             }
+            capabilities["advertised_capabilities"] = advertised_capabilities
+            capabilities["supports_ems_profile_control"] = False
+            capabilities["ems_profile_support_reason"] = (
+                "EMS charging profiles require OCPP 2.0.1 or 2.1"
+            )
+            return capabilities
 
         if protocol == "ocpp2.1":
-            return {
+            capabilities = {
                 "supports_remote_start": True,
                 "supports_remote_stop": True,
                 "supports_set_charging_profile": True,
@@ -749,8 +760,19 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "default_operation_mode": "ChargingOnly",
                 "connector_count": connector_count,
             }
+            capabilities["advertised_capabilities"] = advertised_capabilities
+            capabilities["supports_ems_profile_control"] = (
+                not advertised_capabilities
+                or "ChargingProfileCapable" in advertised_capabilities
+            )
+            capabilities["ems_profile_support_reason"] = (
+                None
+                if capabilities["supports_ems_profile_control"]
+                else "Station does not advertise ChargingProfileCapable capability"
+            )
+            return capabilities
 
-        return {
+        capabilities = {
             "supports_remote_start": True,
             "supports_remote_stop": True,
             "supports_set_charging_profile": True,
@@ -776,3 +798,13 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "default_operation_mode": "ChargingOnly",
             "connector_count": connector_count,
         }
+        capabilities["advertised_capabilities"] = advertised_capabilities
+        capabilities["supports_ems_profile_control"] = (
+            not advertised_capabilities or "ChargingProfileCapable" in advertised_capabilities
+        )
+        capabilities["ems_profile_support_reason"] = (
+            None
+            if capabilities["supports_ems_profile_control"]
+            else "Station does not advertise ChargingProfileCapable capability"
+        )
+        return capabilities
