@@ -52,10 +52,13 @@ Bidirectional note:
 - `set_charging_profile` supports negative `limit` values for stations that advertise bidirectional profile support in the integration capability cache (typically OCPP 2.x).
 - Stations mapped as non-bidirectional (for example OCPP 1.6 by default) will reject negative profile limits with a clear error.
 - Set `duration` to `0` for an indefinite profile (the integration omits duration in the OCPP schedule payload).
-- Charging profile controls and service calls now support explicit `profile_kind` selection: `Absolute` or `Relative`.
+- Charging profile controls and service calls support explicit `profile_kind` selection. OCPP 2.0.1 exposes `Absolute` and `Relative`; OCPP 2.1 additionally exposes `Dynamic`.
 - OCPP 2.1 stations additionally support `Dynamic` profile kind and can push both `limit` and `setpoint` values.
 - `set_charging_profile` accepts optional `setpoint` and `profile_periods` for advanced multi-period dynamic schedules.
-- OCPP 2.1 dynamic profiles now support optional `operation_mode` and `discharge_limit` controls.
+- OCPP 2.1 dynamic profiles support optional `operation_mode` and `discharge_limit` controls.
+- Supported OCPP 2.1 operation modes in HA are: `ChargingOnly`, `ExternalLimits`, `CentralSetpoint`, `ExternalSetpoint`, `LocalFrequency`, `LocalLoadBalancing`, and `Idle`.
+- Operation-mode controls are capability-gated: non-2.1 stations do not expose the `Profile Operation Mode` select in HA.
+- Service input normalization matches UI capability rules: if `set_charging_profile` is called with an unsupported `operation_mode`, the integration automatically falls back to the station default mode.
 - Changing `Profile Limit`, `Profile Setpoint`, or `Profile Discharge Limit` immediately pushes an updated profile.
 - If a charger applies the profile but drives power in the opposite sign direction, set `Profile Sign Mode` to `invert_negative` for that station.
 - `Profile Tx Mode` controls TxProfile behavior: use `safe_fallback` for charger compatibility fallbacks, or `strict_txprofile` to keep `TxProfile` unchanged.
