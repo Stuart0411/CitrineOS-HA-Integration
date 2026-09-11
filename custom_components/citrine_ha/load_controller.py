@@ -247,10 +247,14 @@ class CitrineLoadController:
         )
 
         # Telemetry ingestion
-        grid_w = self._read_sensor_value(CONF_GRID_POWER_SENSOR, 0.0)
-        solar_w = max(0.0, self._read_sensor_value(CONF_SOLAR_POWER_SENSOR, 0.0))
-        battery_w = self._read_sensor_value(CONF_BATTERY_POWER_SENSOR, 0.0)
-        battery_soc = self._read_sensor_value(CONF_BATTERY_SOC_SENSOR, 100.0)
+        grid_val = self._read_sensor_value(CONF_GRID_POWER_SENSOR, 0.0)
+        grid_w = float(grid_val if grid_val is not None else 0.0)
+        solar_val = self._read_sensor_value(CONF_SOLAR_POWER_SENSOR, 0.0)
+        solar_w = max(0.0, float(solar_val if solar_val is not None else 0.0))
+        battery_val = self._read_sensor_value(CONF_BATTERY_POWER_SENSOR, 0.0)
+        battery_w = float(battery_val if battery_val is not None else 0.0)
+        soc_val = self._read_sensor_value(CONF_BATTERY_SOC_SENSOR, 100.0)
+        battery_soc = float(soc_val if soc_val is not None else 100.0)
         min_soc = float(
             self.entry.options.get(CONF_BATTERY_MIN_SOC)
             or self.entry.data.get(CONF_BATTERY_MIN_SOC, DEFAULT_BATTERY_MIN_SOC)
@@ -389,8 +393,10 @@ class CitrineLoadController:
             self.state_status = "Grid Capped (Fast)"
 
         elif self.mode == MODE_DYNAMIC_DOE:
-            doe_import_w = self._read_sensor_value(CONF_DOE_IMPORT_LIMIT_SENSOR, main_fuse_w)
-            doe_export_w = self._read_sensor_value(CONF_DOE_EXPORT_LIMIT_SENSOR, export_limit_w)
+            doe_import_val = self._read_sensor_value(CONF_DOE_IMPORT_LIMIT_SENSOR, main_fuse_w)
+            doe_export_val = self._read_sensor_value(CONF_DOE_EXPORT_LIMIT_SENSOR, export_limit_w)
+            doe_import_w = float(doe_import_val if doe_import_val is not None else main_fuse_w)
+            doe_export_w = float(doe_export_val if doe_export_val is not None else export_limit_w)
             effective_import_cap = min(main_fuse_w, doe_import_w)
             # Available budget under dynamic envelope combines import headroom with local solar surplus
             total_budget_w = max(0.0, effective_import_cap - non_ev_house_w + raw_surplus_w)
@@ -505,7 +511,7 @@ class CitrineLoadController:
             )
             self.last_error = f"Limit failed on {st_ctx.station_id}: {err}"
 
-    def _read_sensor_value(self, config_key: str, default: float = 0.0) -> float:
+    def _read_sensor_value(self, config_key: str, default: float | None = 0.0) -> float | None:
         entity_id = self.entry.options.get(config_key) or self.entry.data.get(config_key)
         if not entity_id or not str(entity_id).strip():
             return default

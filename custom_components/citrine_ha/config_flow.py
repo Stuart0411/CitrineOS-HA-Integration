@@ -136,17 +136,37 @@ class CitrineConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         user_input = user_input or {}
         return vol.Schema(
             {
-                vol.Required(CONF_NAME, default=user_input.get(CONF_NAME, DEFAULT_NAME)): str,
-                vol.Required(CONF_BASE_URL, default=user_input.get(CONF_BASE_URL, "http://localhost:8080")): str,
-                vol.Required(CONF_TENANT_ID, default=user_input.get(CONF_TENANT_ID, DEFAULT_TENANT_ID)): int,
-                vol.Optional(CONF_AUTH_TOKEN, description={"suggested_value": user_input.get(CONF_AUTH_TOKEN, "")}): str,
-                vol.Required(CONF_VERIFY_SSL, default=user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)): bool,
-                vol.Required(CONF_REQUEST_TIMEOUT, default=user_input.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT)): int,
-                vol.Optional(CONF_HASURA_URL, description={"suggested_value": user_input.get(CONF_HASURA_URL, "")}): str,
-                vol.Optional(CONF_HASURA_TOKEN, description={"suggested_value": user_input.get(CONF_HASURA_TOKEN, "")}): str,
-                vol.Optional(CONF_SCAN_INTERVAL, default=user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): int,
-                vol.Optional(CONF_DEFAULT_ID_TAG, default=user_input.get(CONF_DEFAULT_ID_TAG, DEFAULT_DEFAULT_ID_TAG)): str,
-                vol.Optional(CONF_DEFAULT_EVSE_ID, default=user_input.get(CONF_DEFAULT_EVSE_ID, DEFAULT_DEFAULT_EVSE_ID)): int,
+                vol.Required(CONF_NAME, default=user_input.get(CONF_NAME, DEFAULT_NAME)): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+                ),
+                vol.Required(CONF_BASE_URL, default=user_input.get(CONF_BASE_URL, "http://localhost:8080")): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.URL)
+                ),
+                vol.Required(CONF_TENANT_ID, default=user_input.get(CONF_TENANT_ID, DEFAULT_TENANT_ID)): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=1, max=999999, step=1, mode=selector.NumberSelectorMode.BOX)
+                ),
+                vol.Optional(CONF_AUTH_TOKEN): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+                ),
+                vol.Required(CONF_VERIFY_SSL, default=user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)): selector.BooleanSelector(),
+                vol.Required(CONF_REQUEST_TIMEOUT, default=user_input.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT)): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=1, max=120, step=1, mode=selector.NumberSelectorMode.BOX)
+                ),
+                vol.Optional(CONF_HASURA_URL): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.URL)
+                ),
+                vol.Optional(CONF_HASURA_TOKEN): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+                ),
+                vol.Optional(CONF_SCAN_INTERVAL, default=user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=5, max=3600, step=5, mode=selector.NumberSelectorMode.BOX)
+                ),
+                vol.Optional(CONF_DEFAULT_ID_TAG, default=user_input.get(CONF_DEFAULT_ID_TAG, DEFAULT_DEFAULT_ID_TAG)): selector.TextSelector(
+                    selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+                ),
+                vol.Optional(CONF_DEFAULT_EVSE_ID, default=user_input.get(CONF_DEFAULT_EVSE_ID, DEFAULT_DEFAULT_EVSE_ID)): selector.NumberSelector(
+                    selector.NumberSelectorConfig(min=0, max=999, step=1, mode=selector.NumberSelectorMode.BOX)
+                ),
             }
         )
 
@@ -357,24 +377,34 @@ class CitrineOptionsFlow(config_entries.OptionsFlow):
                     vol.Optional(
                         CONF_SITE_ID,
                         default=options.get(CONF_SITE_ID, data.get(CONF_SITE_ID, DEFAULT_SITE_ID)),
-                    ): str,
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+                    ),
                     vol.Optional(
                         CONF_MQTT_TOPIC_PREFIX,
                         default=options.get(CONF_MQTT_TOPIC_PREFIX, data.get(CONF_MQTT_TOPIC_PREFIX, DEFAULT_MQTT_TOPIC_PREFIX)),
-                    ): str,
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+                    ),
                     # Connection & Discovery Settings
                     vol.Optional(
                         CONF_SCAN_INTERVAL,
                         default=options.get(CONF_SCAN_INTERVAL, data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)),
-                    ): int,
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(min=5, max=3600, step=5, mode=selector.NumberSelectorMode.BOX)
+                    ),
                     vol.Optional(
                         CONF_DEFAULT_ID_TAG,
                         default=options.get(CONF_DEFAULT_ID_TAG, data.get(CONF_DEFAULT_ID_TAG, DEFAULT_DEFAULT_ID_TAG)),
-                    ): str,
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+                    ),
                     vol.Optional(
                         CONF_DEFAULT_EVSE_ID,
                         default=options.get(CONF_DEFAULT_EVSE_ID, data.get(CONF_DEFAULT_EVSE_ID, DEFAULT_DEFAULT_EVSE_ID)),
-                    ): int,
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(min=0, max=999, step=1, mode=selector.NumberSelectorMode.BOX)
+                    ),
                 }
             ),
         )
