@@ -116,3 +116,54 @@ def test_three_phase_pilot_floor():
     # Sufficient for 3-phase minimum
     allocations = calculate_station_allocations(5000.0, [st_3ph])
     assert allocations["CS_3PH"] == 5000.0
+
+
+def test_per_phase_headroom_clamping():
+    """Verify single-phase charger on L1 is clamped if Phase A headroom is tight."""
+    st_l1 = StationLoadContext(
+        station_id="CS_L1",
+        phase_connection="1-Phase (L1 / Phase A)",
+        phases=1,
+        nominal_voltage=230.0,
+        min_current_a=6.0,
+        max_limit_w=7400.0,
+        is_active=True,
+        is_online=True,
+    )
+
+    # Budget available overall is 7400W (32A), but Phase A headroom is only 10A (2300W)
+    phase_headroom = (10.0, 32.0, 32.0)
+    allocations = calculate_station_allocations(
+        7400.0,
+        [st_l1],
+        phase_headroom_a=phase_headroom,
+    )
+    # Target clamped to 10A * 230V = 2300W
+    assert allocations["CS_L1"] == 2300.0
+
+
+def test_phase_unbalance_clamping():
+    """Verify 1-phase charger is clamped if charging would exceed max allowed phase unbalance."""
+    st_l1 = StationLoadContext(
+        station_id="CS_L1",
+        phase_connection="1-Phase (L1 / Phase A)",
+        phases=1,
+        nominal_voltage=230.0,
+        min_current_a=6.0,
+        max_limit_w=7400.0,
+        is_active=True,
+        is_online=True,
+    )
+
+    # Base house loads: L1 = 15A, L2 = 5A, L3 = 5A (current unbalance = 10A)
+    # Max allowed unbalance = 20A -> Max additional current on L1 before unbalance = 15A (3450W)
+    base_currents = (15.0, 5.0, 5.0)
+    allocations = calculate_station_allocations(
+        7400.0,
+        [st_l1],
+        base_phase_currents_a=base_currents,
+        max_phase_unbalance_a=20.0,
+    )
+    # Clamped to ensure (15 + I_ev) - 5 <= 20 -> I_ev <= 10A -> 2300W + initial headroom
+    assert allocations["CS_L1"] <= 4600.0
+

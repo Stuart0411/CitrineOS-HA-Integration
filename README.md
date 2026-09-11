@@ -29,12 +29,14 @@ Selectable on the fly via `select.citrine_controller_mode`:
 * **Solar Only:** Charges strictly from excess solar generation above a configurable start buffer.
 * **Solar + Battery:** Uses excess solar and allows drawing from the home battery down to a minimum configurable SOC.
 * **Grid Capped (Fast):** Maximizes EV charging speed while ensuring total site load stays safely below the main grid fuse rating.
-* **Dynamic Envelope (DOE):** Follows dynamic utility operating envelopes (CSIP-Aus / IEEE 2030.5).
+* **Dynamic Envelope (DOE):** Follows dynamic utility operating envelopes (CSIP-Aus / IEEE 2030.5). Ingests real-time import/export caps from your CSIP gateway/client sensor (e.g. Edge zero, Wattwatchers, SwitchDin) and dynamically limits EV share while co-optimizing with other household loads.
 * **Off / Emergency Safe:** Suspends all charging or drops power to safe minimums immediately.
 
-### 3. Multi-Station Power Allocator
+### 3. Multi-Station Power & 3-Phase Balancing
 * Dynamically balances available site power across multiple connected EVSEs.
 * Supports **Per-Station Priority (1 to 5)**: higher-priority vehicles receive power first.
+* Supports **Per-Station Phase Wiring (`select.<id>_phase_wiring`)**: configure chargers as `3-Phase (L1+L2+L3)`, `1-Phase (L1 / Phase A)`, `1-Phase (L2 / Phase B)`, or `1-Phase (L3 / Phase C)`.
+* **Phase-Unbalance Protection**: Ingests Phase A, B, and C grid currents and enforces maximum phase-to-phase unbalance limits (e.g., AS/NZS 4777 20A limit) so high 1-phase EV loads do not trip main neutral or phase fuses.
 * Supports **Per-Station Mode Overrides**: `auto` (follows site controller), `boost` (max power override), and `pause` (temporarily suspend).
 
 ---
@@ -49,6 +51,10 @@ Selectable on the fly via `select.citrine_controller_mode`:
 | `sensor.citrine_allocated_ev_power` | Power Sensor | Real-time Watts allocated across all EVSEs |
 | `sensor.citrine_site_headroom_power` | Power Sensor | Remaining Watts before reaching main fuse limit |
 | `sensor.citrine_solar_surplus_power` | Power Sensor | Available excess solar generation in Watts |
+| `sensor.citrine_phase_unbalance_a` | Current Sensor | Real-time phase-to-phase current unbalance (Amps) |
+| `sensor.citrine_phase_a_current` | Current Sensor | Grid Phase A / L1 current (Amps) |
+| `sensor.citrine_phase_b_current` | Current Sensor | Grid Phase B / L2 current (Amps) |
+| `sensor.citrine_phase_c_current` | Current Sensor | Grid Phase C / L3 current (Amps) |
 | `sensor.citrine_active_ev_count` | Sensor | Number of actively charging / connected EVs |
 | `number.citrine_main_fuse_limit` | Number | Site main fuse import limit (Watts) |
 | `number.citrine_solar_start_buffer` | Number | Surplus buffer required before starting charging (Watts) |
@@ -59,7 +65,7 @@ Selectable on the fly via `select.citrine_controller_mode`:
 
 ### Discovered Chargers: `Citrine Charger <ID>`
 * **Status Sensors:** Online state, Session state, Connector count, Protocol, OCPP Heartbeat age.
-* **Control Selects:** Control Override (`auto`, `boost`, `pause`), Station Priority (`1 - Lowest` to `5 - Highest`).
+* **Control Selects:** Control Override (`auto`, `boost`, `pause`), Station Priority (`1 - Lowest` to `5 - Highest`), Phase Wiring (`3-Phase`, `L1`, `L2`, `L3`).
 * **Buttons:** Start Charging, Stop Charging, Apply Profile, Clear Profile, Dynamic Session Start/Stop.
 
 ---

@@ -12,7 +12,13 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_TENANT_ID, CONTROLLER_MODES, DOMAIN
+from .const import (
+    CONF_TENANT_ID,
+    CONTROLLER_MODES,
+    DOMAIN,
+    PHASE_CONNECTION_3PHASE,
+    PHASE_CONNECTIONS,
+)
 from .coordinator import CitrineCoordinator
 from .load_controller import CitrineLoadController
 from .profile_controls import async_push_profile_update
@@ -40,6 +46,7 @@ async def async_setup_entry(
             capabilities = coordinator.get_station_capabilities(str(station_id))
             entities.append(CitrineStationOverrideModeSelect(controller, entry, station))
             entities.append(CitrineStationPrioritySelect(controller, entry, station))
+            entities.append(CitrineStationPhaseConnectionSelect(controller, entry, station))
             entities.append(CitrineStationProfileUnitSelect(coordinator, entry, station))
             entities.append(CitrineStationProfilePurposeSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileKindSelect(coordinator, entry, station))
@@ -450,4 +457,51 @@ class CitrineStationPrioritySelect(SelectEntity):
             model=self._station.get("chargePointModel") or self._station.get("protocol"),
             sw_version=self._station.get("firmwareVersion"),
         )
+
+
+class CitrineStationPhaseConnectionSelect(SelectEntity):
+    """Per-station electrical supply wiring selector (3-Phase, L1, L2, L3)."""
+
+    _attr_icon = "mdi:sine-wave"
+
+    def __init__(
+        self,
+        controller: CitrineLoadController,
+        entry: ConfigEntry,
+        station: dict[str, Any],
+    ) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._station_id = str(station["id"])
+        self._station = station
+        self._attr_unique_id = f"{entry.entry_id}_{self._station_id}_phase_connection"
+        self._attr_name = f"{self._station_id} Phase Wiring"
+
+    @property
+    def options(self) -> list[str]:
+        return PHASE_CONNECTIONS
+
+    @property
+    def current_option(self) -> str:
+        return self._controller._station_phase_connections.get(
+            self._station_id,
+            PHASE_CONNECTION_3PHASE,
+        )
+
+    async def async_select_option(self, option: str) -> None:
+        if option in self.options:
+            self._controller.set_station_phase_connection(self._station_id, option)
+            self.async_write_ha_state()
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        tenant = self._station.get("tenantId", self._entry.data.get(CONF_TENANT_ID, 1))
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"{tenant}:{self._station_id}")},
+            name=f"Citrine Charger {self._station_id}",
+            manufacturer=self._station.get("chargePointVendor") or "Unknown",
+            model=self._station.get("chargePointModel") or self._station.get("protocol"),
+            sw_version=self._station.get("firmwareVersion"),
+        )
+
 

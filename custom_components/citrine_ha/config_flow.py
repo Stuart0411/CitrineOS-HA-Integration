@@ -22,15 +22,22 @@ from .const import (
     CONF_DEADBAND_W,
     CONF_DEFAULT_EVSE_ID,
     CONF_DEFAULT_ID_TAG,
+    CONF_DOE_EXPORT_LIMIT_SENSOR,
+    CONF_DOE_IMPORT_LIMIT_SENSOR,
     CONF_EMS_ENDPOINT_PREFIX,
     CONF_EMS_TELEMETRY_LIMIT,
     CONF_EMS_TELEMETRY_SITE_ID,
     CONF_EMS_TELEMETRY_STALE_SECS,
+    CONF_GRID_PHASE_A_CURRENT_SENSOR,
+    CONF_GRID_PHASE_B_CURRENT_SENSOR,
+    CONF_GRID_PHASE_C_CURRENT_SENSOR,
     CONF_GRID_POWER_SENSOR,
     CONF_HASURA_QUERY,
     CONF_HASURA_TOKEN,
     CONF_HASURA_URL,
+    CONF_MAIN_FUSE_CURRENT_A,
     CONF_MAIN_FUSE_LIMIT_W,
+    CONF_MAX_PHASE_UNBALANCE_A,
     CONF_MIN_CHARGE_CURRENT_A,
     CONF_MIN_DWELL_SECS,
     CONF_NAME,
@@ -56,7 +63,9 @@ from .const import (
     DEFAULT_EMS_TELEMETRY_LIMIT,
     DEFAULT_EMS_TELEMETRY_STALE_SECS,
     DEFAULT_HASURA_QUERY,
+    DEFAULT_MAIN_FUSE_CURRENT_A,
     DEFAULT_MAIN_FUSE_LIMIT_W,
+    DEFAULT_MAX_PHASE_UNBALANCE_A,
     DEFAULT_MIN_CHARGE_CURRENT_A,
     DEFAULT_MIN_DWELL_SECS,
     DEFAULT_NAME,
@@ -148,6 +157,15 @@ class CitrineConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_GRID_POWER_SENSOR): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
+                vol.Optional(CONF_GRID_PHASE_A_CURRENT_SENSOR): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Optional(CONF_GRID_PHASE_B_CURRENT_SENSOR): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Optional(CONF_GRID_PHASE_C_CURRENT_SENSOR): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
                 vol.Optional(CONF_SOLAR_POWER_SENSOR): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
@@ -155,6 +173,12 @@ class CitrineConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
                 vol.Optional(CONF_BATTERY_SOC_SENSOR): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Optional(CONF_DOE_IMPORT_LIMIT_SENSOR): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Optional(CONF_DOE_EXPORT_LIMIT_SENSOR): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
                 vol.Optional(CONF_CONTROLLER_MODE, default=DEFAULT_CONTROLLER_MODE): selector.SelectSelector(
@@ -231,6 +255,18 @@ class CitrineOptionsFlow(config_entries.OptionsFlow):
                         description={"suggested_value": options.get(CONF_GRID_POWER_SENSOR, data.get(CONF_GRID_POWER_SENSOR))},
                     ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
                     vol.Optional(
+                        CONF_GRID_PHASE_A_CURRENT_SENSOR,
+                        description={"suggested_value": options.get(CONF_GRID_PHASE_A_CURRENT_SENSOR, data.get(CONF_GRID_PHASE_A_CURRENT_SENSOR))},
+                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                    vol.Optional(
+                        CONF_GRID_PHASE_B_CURRENT_SENSOR,
+                        description={"suggested_value": options.get(CONF_GRID_PHASE_B_CURRENT_SENSOR, data.get(CONF_GRID_PHASE_B_CURRENT_SENSOR))},
+                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                    vol.Optional(
+                        CONF_GRID_PHASE_C_CURRENT_SENSOR,
+                        description={"suggested_value": options.get(CONF_GRID_PHASE_C_CURRENT_SENSOR, data.get(CONF_GRID_PHASE_C_CURRENT_SENSOR))},
+                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                    vol.Optional(
                         CONF_SOLAR_POWER_SENSOR,
                         description={"suggested_value": options.get(CONF_SOLAR_POWER_SENSOR, data.get(CONF_SOLAR_POWER_SENSOR))},
                     ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
@@ -241,6 +277,14 @@ class CitrineOptionsFlow(config_entries.OptionsFlow):
                     vol.Optional(
                         CONF_BATTERY_SOC_SENSOR,
                         description={"suggested_value": options.get(CONF_BATTERY_SOC_SENSOR, data.get(CONF_BATTERY_SOC_SENSOR))},
+                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                    vol.Optional(
+                        CONF_DOE_IMPORT_LIMIT_SENSOR,
+                        description={"suggested_value": options.get(CONF_DOE_IMPORT_LIMIT_SENSOR, data.get(CONF_DOE_IMPORT_LIMIT_SENSOR))},
+                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                    vol.Optional(
+                        CONF_DOE_EXPORT_LIMIT_SENSOR,
+                        description={"suggested_value": options.get(CONF_DOE_EXPORT_LIMIT_SENSOR, data.get(CONF_DOE_EXPORT_LIMIT_SENSOR))},
                     ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
                     vol.Optional(
                         CONF_CONTROLLER_MODE,
@@ -254,6 +298,14 @@ class CitrineOptionsFlow(config_entries.OptionsFlow):
                     vol.Optional(
                         CONF_MAIN_FUSE_LIMIT_W,
                         default=options.get(CONF_MAIN_FUSE_LIMIT_W, data.get(CONF_MAIN_FUSE_LIMIT_W, DEFAULT_MAIN_FUSE_LIMIT_W)),
+                    ): vol.Coerce(float),
+                    vol.Optional(
+                        CONF_MAIN_FUSE_CURRENT_A,
+                        default=options.get(CONF_MAIN_FUSE_CURRENT_A, data.get(CONF_MAIN_FUSE_CURRENT_A, DEFAULT_MAIN_FUSE_CURRENT_A)),
+                    ): vol.Coerce(float),
+                    vol.Optional(
+                        CONF_MAX_PHASE_UNBALANCE_A,
+                        default=options.get(CONF_MAX_PHASE_UNBALANCE_A, data.get(CONF_MAX_PHASE_UNBALANCE_A, DEFAULT_MAX_PHASE_UNBALANCE_A)),
                     ): vol.Coerce(float),
                     vol.Optional(
                         CONF_SOLAR_START_BUFFER_W,

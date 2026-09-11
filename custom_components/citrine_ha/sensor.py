@@ -10,7 +10,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, UnitOfPower
+from homeassistant.const import EntityCategory, UnitOfElectricCurrent, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -60,6 +60,10 @@ async def async_setup_entry(
             CitrineSiteHeadroomPowerSensor(controller, entry),
             CitrineSolarSurplusPowerSensor(controller, entry),
             CitrineActiveEvCountSensor(controller, entry),
+            CitrinePhaseUnbalanceSensor(controller, entry),
+            CitrinePhaseCurrentSensor(controller, entry, phase_name="A"),
+            CitrinePhaseCurrentSensor(controller, entry, phase_name="B"),
+            CitrinePhaseCurrentSensor(controller, entry, phase_name="C"),
             CitrineMqttIntentStatusSensor(controller, entry),
             # Telemetry Intake Sensors
             CitrineEmsIntakeAcceptedSensor(coordinator, entry),
@@ -860,5 +864,72 @@ class CitrineMqttIntentStatusSensor(SensorEntity):
     @property
     def device_info(self) -> DeviceInfo:
         return _site_device_info(self._entry)
+
+
+class CitrinePhaseUnbalanceSensor(SensorEntity):
+    """Real-time phase-to-phase current unbalance."""
+
+    _attr_icon = "mdi:scale-unbalanced"
+    _attr_device_class = SensorDeviceClass.CURRENT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
+
+    def __init__(self, controller: CitrineLoadController, entry: ConfigEntry) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_phase_unbalance_a"
+        self._attr_name = "Citrine Phase Current Unbalance"
+
+    @property
+    def native_value(self) -> float:
+        return self._controller.phase_unbalance_a
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "phase_a_current_a": self._controller.phase_a_current_a,
+            "phase_b_current_a": self._controller.phase_b_current_a,
+            "phase_c_current_a": self._controller.phase_c_current_a,
+        }
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _site_device_info(self._entry)
+
+
+class CitrinePhaseCurrentSensor(SensorEntity):
+    """Grid phase current sensor for an individual phase."""
+
+    _attr_icon = "mdi:current-ac"
+    _attr_device_class = SensorDeviceClass.CURRENT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
+
+    def __init__(
+        self,
+        controller: CitrineLoadController,
+        entry: ConfigEntry,
+        phase_name: str,
+    ) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._phase_name = phase_name.upper()
+        self._attr_unique_id = f"{entry.entry_id}_phase_{self._phase_name.lower()}_current"
+        self._attr_name = f"Citrine Phase {self._phase_name} Current"
+
+    @property
+    def native_value(self) -> float:
+        if self._phase_name == "A":
+            return round(self._controller.phase_a_current_a, 1)
+        elif self._phase_name == "B":
+            return round(self._controller.phase_b_current_a, 1)
+        elif self._phase_name == "C":
+            return round(self._controller.phase_c_current_a, 1)
+        return 0.0
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _site_device_info(self._entry)
+
 
 

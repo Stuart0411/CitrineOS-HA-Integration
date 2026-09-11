@@ -9,6 +9,8 @@ from custom_components.citrine_ha.const import (
     CONF_BATTERY_SOC_SENSOR,
     CONF_CONTROLLER_MODE,
     CONF_DEADBAND_W,
+    CONF_DOE_EXPORT_LIMIT_SENSOR,
+    CONF_DOE_IMPORT_LIMIT_SENSOR,
     CONF_GRID_POWER_SENSOR,
     CONF_MAIN_FUSE_LIMIT_W,
     CONF_MIN_CHARGE_CURRENT_A,
@@ -19,6 +21,7 @@ from custom_components.citrine_ha.const import (
     CONF_SITE_PHASES,
     CONF_SOLAR_POWER_SENSOR,
     CONF_SOLAR_START_BUFFER_W,
+    MODE_DYNAMIC_DOE,
     MODE_EMERGENCY_SAFE,
     MODE_GRID_CAPPED,
     MODE_OFF,
@@ -161,3 +164,71 @@ async def test_sudden_load_spike_curtailment(mock_controller_env):
 
     await controller.async_recompute()
     assert controller.state_status == "Curtailing (Grid Alert)"
+
+
+@pytest.mark.asyncio
+async def test_dynamic_doe_envelope_tracking(mock_controller_env):
+    """Scenario 3: CSIP-Aus DOE limits dynamically constrain available EV budget."""
+    controller, hass, client = mock_controller_env
+    controller.entry.options[CONF_DOE_IMPORT_LIMIT_SENSOR] = "sensor.doe_import_limit"
+    controller.entry.options[CONF_DOE_EXPORT_LIMIT_SENSOR] = "sensor.doe_export_limit"
+    controller.set_mode(MODE_DYNAMIC_DOE)
+
+    # Dynamic DOE import cap = 6000W, house load = 2000W, 0W solar -> remaining headroom = 4000W
+    def get_doe_state(entity_id):
+        state = MagicMock()
+        if entity_id == "sensor.doe_import_limit":
+            state.state = "6000.0"
+        elif entity_id == "sensor.doe_export_limit":
+            state.state = "1500.0"
+        elif entity_id == "sensor.grid_power":
+            state.state = "2000.0"
+        elif entity_id == "sensor.solar_power":
+            state.state = "0.0"
+        elif entity_id == "sensor.battery_power":
+            state.state = "0.0"
+        return state
+
+    hass.states.get.side_effect = get_doe_state
+    controller._last_state_change_time.clear()
+
+    await controller.async_recompute()
+    assert controller.state_status == "CSIP-Aus Envelope Active"
+    assert controller.allocated_ev_power_w == 4000.0
+
+
+@pytest.mark.asyncio
+async def test_three_phase_unbalance_monitoring(mock_controller_env):
+    """Scenario 4: 3-phase grid current monitoring calculates phase unbalance."""
+    controller, hass, client = mock_controller_env
+    controller.entry.options[CONF_GRID_PHASE_A_CURRENT_SENSOR] = "sensor.phase_a_current"
+    controller.entry.options[CONF_GRID_PHASE_B_CURRENT_SENSOR] = "sensor.phase_b_current"
+    controller.entry.options[CONF_GRID_PHASE_C_CURRENT_SENSOR] = "sensor.phase_c_current"
+
+    def get_phase_state(entity_id):
+        state = MagicMock()
+        if entity_id == "sensor.phase_a_current":
+            state.state = "25.0"
+        elif entity_id == "sensor.phase_b_current":
+            state.state = "10.0"
+        elif entity_id == "sensor.phase_c_current":
+            state.state = "5.0"
+        elif entity_id == "sensor.grid_power":
+            state.state = "9200.0"
+        elif entity_id == "sensor.solar_power":
+            state.state = "0.0"
+        elif entity_id == "sensor.battery_power":
+            state.state = "0.0"
+        return state
+
+    hass.states.get.side_effect = get_phase_state
+    controller._last_state_change_time.clear()
+
+    await controller.async_recompute()
+    assert controller.phase_a_current_a == 25.0
+    assert controller.phase_b_current_a == 10.0
+    assert controller.phase_c_current_a == 5.0
+    # Unbalance = max(25, 10, 5) - min(25, 10, 5) = 20.0A
+    assert controller.phase_unbalance_a == 20.0
+
+

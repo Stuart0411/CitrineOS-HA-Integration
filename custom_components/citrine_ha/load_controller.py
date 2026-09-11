@@ -21,8 +21,15 @@ from .const import (
     CONF_CONTROLLER_INTERVAL_SECS,
     CONF_CONTROLLER_MODE,
     CONF_DEADBAND_W,
+    CONF_DOE_EXPORT_LIMIT_SENSOR,
+    CONF_DOE_IMPORT_LIMIT_SENSOR,
+    CONF_GRID_PHASE_A_CURRENT_SENSOR,
+    CONF_GRID_PHASE_B_CURRENT_SENSOR,
+    CONF_GRID_PHASE_C_CURRENT_SENSOR,
     CONF_GRID_POWER_SENSOR,
+    CONF_MAIN_FUSE_CURRENT_A,
     CONF_MAIN_FUSE_LIMIT_W,
+    CONF_MAX_PHASE_UNBALANCE_A,
     CONF_MIN_CHARGE_CURRENT_A,
     CONF_MIN_DWELL_SECS,
     CONF_MQTT_TOPIC_PREFIX,
@@ -37,7 +44,9 @@ from .const import (
     DEFAULT_CONTROLLER_INTERVAL_SECS,
     DEFAULT_CONTROLLER_MODE,
     DEFAULT_DEADBAND_W,
+    DEFAULT_MAIN_FUSE_CURRENT_A,
     DEFAULT_MAIN_FUSE_LIMIT_W,
+    DEFAULT_MAX_PHASE_UNBALANCE_A,
     DEFAULT_MIN_CHARGE_CURRENT_A,
     DEFAULT_MIN_DWELL_SECS,
     DEFAULT_MQTT_TOPIC_PREFIX,
@@ -53,6 +62,7 @@ from .const import (
     MODE_OFF,
     MODE_SOLAR_BATTERY,
     MODE_SOLAR_ONLY,
+    PHASE_CONNECTION_3PHASE,
 )
 from .coordinator import CitrineCoordinator
 from .mqtt_intent import MqttIntentPublisher
@@ -97,6 +107,10 @@ class CitrineLoadController:
         self.allocated_ev_power_w = 0.0
         self.solar_surplus_w = 0.0
         self.active_ev_count = 0
+        self.phase_a_current_a = 0.0
+        self.phase_b_current_a = 0.0
+        self.phase_c_current_a = 0.0
+        self.phase_unbalance_a = 0.0
         self.last_run_timestamp: str | None = None
         self.last_error: str | None = None
 
@@ -105,6 +119,7 @@ class CitrineLoadController:
         self._last_state_change_time: dict[str, datetime] = {}
         self._station_overrides: dict[str, str] = {}  # "auto", "boost", "pause"
         self._station_priorities: dict[str, int] = {}  # 1-5
+        self._station_phase_connections: dict[str, str] = {}  # "3phase", "L1", "L2", "L3"
 
         self._unsub_timer: CALLBACK_TYPE | None = None
         self._unsub_trackers: list[CALLBACK_TYPE] = []
@@ -125,7 +140,12 @@ class CitrineLoadController:
         # Track reactive state changes on key sensors for immediate step-response
         tracked_sensors = [
             self.entry.options.get(CONF_GRID_POWER_SENSOR) or self.entry.data.get(CONF_GRID_POWER_SENSOR),
+            self.entry.options.get(CONF_GRID_PHASE_A_CURRENT_SENSOR) or self.entry.data.get(CONF_GRID_PHASE_A_CURRENT_SENSOR),
+            self.entry.options.get(CONF_GRID_PHASE_B_CURRENT_SENSOR) or self.entry.data.get(CONF_GRID_PHASE_B_CURRENT_SENSOR),
+            self.entry.options.get(CONF_GRID_PHASE_C_CURRENT_SENSOR) or self.entry.data.get(CONF_GRID_PHASE_C_CURRENT_SENSOR),
             self.entry.options.get(CONF_SOLAR_POWER_SENSOR) or self.entry.data.get(CONF_SOLAR_POWER_SENSOR),
+            self.entry.options.get(CONF_DOE_IMPORT_LIMIT_SENSOR) or self.entry.data.get(CONF_DOE_IMPORT_LIMIT_SENSOR),
+            self.entry.options.get(CONF_DOE_EXPORT_LIMIT_SENSOR) or self.entry.data.get(CONF_DOE_EXPORT_LIMIT_SENSOR),
         ]
         valid_sensors = [str(s) for s in tracked_sensors if s and str(s).strip()]
         if valid_sensors:
@@ -168,6 +188,11 @@ class CitrineLoadController:
     def set_station_priority(self, station_id: str, priority: int) -> None:
         """Set station priority (1 to 5)."""
         self._station_priorities[station_id] = max(1, min(int(priority), 5))
+        self.hass.async_create_task(self.async_recompute())
+
+    def set_station_phase_connection(self, station_id: str, connection: str) -> None:
+        """Set station phase wiring (3-Phase, L1, L2, L3)."""
+        self._station_phase_connections[station_id] = connection
         self.hass.async_create_task(self.async_recompute())
 
     async def async_recompute(self) -> None:
@@ -230,10 +255,46 @@ class CitrineLoadController:
             self.entry.options.get(CONF_BATTERY_MIN_SOC)
             or self.entry.data.get(CONF_BATTERY_MIN_SOC, DEFAULT_BATTERY_MIN_SOC)
         )
+        fuse_current_a = float(
+            self.entry.options.get(CONF_MAIN_FUSE_CURRENT_A)
+            or self.entry.data.get(CONF_MAIN_FUSE_CURRENT_A, DEFAULT_MAIN_FUSE_CURRENT_A)
+        )
+        max_unbalance_a = float(
+            self.entry.options.get(CONF_MAX_PHASE_UNBALANCE_A)
+            or self.entry.data.get(CONF_MAX_PHASE_UNBALANCE_A, DEFAULT_MAX_PHASE_UNBALANCE_A)
+        )
+
+        # 3-Phase current sensor ingestion (if present)
+        i_a = self._read_sensor_value(CONF_GRID_PHASE_A_CURRENT_SENSOR, None)
+        i_b = self._read_sensor_value(CONF_GRID_PHASE_B_CURRENT_SENSOR, None)
+        i_c = self._read_sensor_value(CONF_GRID_PHASE_C_CURRENT_SENSOR, None)
+
+        if i_a is not None and i_b is not None and i_c is not None:
+            self.phase_a_current_a = max(0.0, i_a)
+            self.phase_b_current_a = max(0.0, i_b)
+            self.phase_c_current_a = max(0.0, i_c)
+        else:
+            # Derive estimated phase currents from total active power
+            if phases == 3:
+                per_phase_est = max(0.0, grid_w / (3.0 * max(1.0, voltage)))
+                self.phase_a_current_a = per_phase_est
+                self.phase_b_current_a = per_phase_est
+                self.phase_c_current_a = per_phase_est
+            else:
+                self.phase_a_current_a = max(0.0, grid_w / max(1.0, voltage))
+                self.phase_b_current_a = 0.0
+                self.phase_c_current_a = 0.0
+
+        max_curr = max(self.phase_a_current_a, self.phase_b_current_a, self.phase_c_current_a)
+        min_curr = min(self.phase_a_current_a, self.phase_b_current_a, self.phase_c_current_a)
+        self.phase_unbalance_a = round(max_curr - min_curr, 1)
 
         # Build station load contexts
         station_contexts: list[StationLoadContext] = []
         total_ev_current_power = 0.0
+        ev_currs_l1 = 0.0
+        ev_currs_l2 = 0.0
+        ev_currs_l3 = 0.0
 
         for st in self.coordinator.data.get("stations", []):
             st_id = str(st.get("id"))
@@ -250,24 +311,44 @@ class CitrineLoadController:
 
             override = self._station_overrides.get(st_id, "auto")
             priority = self._station_priorities.get(st_id, 3)
+            phase_conn = self._station_phase_connections.get(st_id, PHASE_CONNECTION_3PHASE if phases == 3 else "1-Phase (L1 / Phase A)")
 
-            station_contexts.append(
-                StationLoadContext(
-                    station_id=st_id,
-                    evse_id=int(st.get("defaultEvseId", 1)),
-                    protocol=str(st.get("protocol", "ocpp2.0.1")),
-                    is_online=is_online,
-                    is_active=has_tx or override == "boost",
-                    current_power_w=st_power,
-                    priority=priority,
-                    min_current_a=min_current_a,
-                    phases=phases,
-                    nominal_voltage=voltage,
-                    override_mode=override,
-                )
+            ctx = StationLoadContext(
+                station_id=st_id,
+                evse_id=int(st.get("defaultEvseId", 1)),
+                protocol=str(st.get("protocol", "ocpp2.0.1")),
+                is_online=is_online,
+                is_active=has_tx or override == "boost",
+                current_power_w=st_power,
+                priority=priority,
+                min_current_a=min_current_a,
+                phases=3 if ("3-Phase" in phase_conn or "3phase" in phase_conn) else 1,
+                phase_connection=phase_conn,
+                nominal_voltage=voltage,
+                override_mode=override,
             )
+            station_contexts.append(ctx)
+
+            if has_tx and is_online:
+                c1, c2, c3 = ctx.power_to_phase_currents(st_power)
+                ev_currs_l1 += c1
+                ev_currs_l2 += c2
+                ev_currs_l3 += c3
 
         self.active_ev_count = sum(1 for st in station_contexts if st.is_active and st.is_online)
+
+        # Base non-EV background phase currents
+        base_phase_currents = (
+            max(0.0, self.phase_a_current_a - ev_currs_l1),
+            max(0.0, self.phase_b_current_a - ev_currs_l2),
+            max(0.0, self.phase_c_current_a - ev_currs_l3),
+        )
+        # Per-phase headroom in Amps
+        phase_headroom = (
+            max(0.0, fuse_current_a - base_phase_currents[0]),
+            max(0.0, fuse_current_a - base_phase_currents[1]),
+            max(0.0, fuse_current_a - base_phase_currents[2]),
+        )
 
         # Non-EV house loads calculation
         # grid_w > 0 is importing, grid_w < 0 is exporting
@@ -308,9 +389,12 @@ class CitrineLoadController:
             self.state_status = "Grid Capped (Fast)"
 
         elif self.mode == MODE_DYNAMIC_DOE:
-            # Enforce dynamic import cap
-            total_budget_w = max(0.0, min(export_limit_w, main_fuse_w - non_ev_house_w))
-            self.state_status = "Dynamic DOE"
+            doe_import_w = self._read_sensor_value(CONF_DOE_IMPORT_LIMIT_SENSOR, main_fuse_w)
+            doe_export_w = self._read_sensor_value(CONF_DOE_EXPORT_LIMIT_SENSOR, export_limit_w)
+            effective_import_cap = min(main_fuse_w, doe_import_w)
+            # Available budget under dynamic envelope combines import headroom with local solar surplus
+            total_budget_w = max(0.0, effective_import_cap - non_ev_house_w + raw_surplus_w)
+            self.state_status = "CSIP-Aus Envelope Active"
 
         else:
             total_budget_w = 0.0
@@ -319,13 +403,20 @@ class CitrineLoadController:
         # Hard safety clamp: Never exceed site fuse headroom
         total_budget_w = min(total_budget_w, self.site_headroom_w)
 
-        # Fast Curtailment Check: If grid import is close to fuse limit (>92%), force fast curtail
-        if grid_w > (main_fuse_w * 0.92):
+        # Fast Curtailment Check: If grid import or any single phase is close to fuse limit (>92%), force fast curtail
+        phase_near_limit = max(self.phase_a_current_a, self.phase_b_current_a, self.phase_c_current_a) > (fuse_current_a * 0.92)
+        if grid_w > (main_fuse_w * 0.92) or phase_near_limit:
             self.state_status = "Curtailing (Grid Alert)"
             total_budget_w = max(0.0, total_budget_w * 0.5)
 
-        # Calculate per-station target allocations
-        allocations = calculate_station_allocations(total_budget_w, station_contexts)
+        # Calculate per-station target allocations with phase constraints
+        allocations = calculate_station_allocations(
+            total_budget_w,
+            station_contexts,
+            phase_headroom_a=phase_headroom,
+            base_phase_currents_a=base_phase_currents,
+            max_phase_unbalance_a=max_unbalance_a if phases == 3 else None,
+        )
         self.allocated_ev_power_w = sum(allocations.values())
 
         # Publish structured real-time envelope to CitrineOS MQTT intent bus
@@ -337,7 +428,8 @@ class CitrineLoadController:
                 "chargeLimitW": round(allocations.get(st_ctx.station_id, 0.0), 1),
                 "dischargeLimitW": 0.0,
                 "priority": st_ctx.priority,
-                "phases": st_ctx.phases,
+                "phases": st_ctx.effective_phases,
+                "phaseConnection": st_ctx.phase_connection,
                 "overrideMode": st_ctx.override_mode,
                 "unit": "W",
             }

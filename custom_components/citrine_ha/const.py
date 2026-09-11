@@ -92,11 +92,18 @@ DEFAULT_PROFILE_KIND = "Absolute"
 
 # Load Controller Configuration Keys
 CONF_GRID_POWER_SENSOR = "grid_power_sensor"
+CONF_GRID_PHASE_A_CURRENT_SENSOR = "grid_phase_a_current_sensor"
+CONF_GRID_PHASE_B_CURRENT_SENSOR = "grid_phase_b_current_sensor"
+CONF_GRID_PHASE_C_CURRENT_SENSOR = "grid_phase_c_current_sensor"
 CONF_SOLAR_POWER_SENSOR = "solar_power_sensor"
 CONF_BATTERY_POWER_SENSOR = "battery_power_sensor"
 CONF_BATTERY_SOC_SENSOR = "battery_soc_sensor"
+CONF_DOE_IMPORT_LIMIT_SENSOR = "doe_import_limit_sensor"
+CONF_DOE_EXPORT_LIMIT_SENSOR = "doe_export_limit_sensor"
 CONF_BATTERY_MIN_SOC = "battery_min_soc"
 CONF_MAIN_FUSE_LIMIT_W = "main_fuse_limit_w"
+CONF_MAIN_FUSE_CURRENT_A = "main_fuse_current_a"
+CONF_MAX_PHASE_UNBALANCE_A = "max_phase_unbalance_a"
 CONF_SITE_EXPORT_LIMIT_W = "site_export_limit_w"
 CONF_SOLAR_START_BUFFER_W = "solar_start_buffer_w"
 CONF_MIN_CHARGE_CURRENT_A = "min_charge_current_a"
@@ -129,6 +136,8 @@ CONTROLLER_MODES = [
 
 # Controller Defaults
 DEFAULT_MAIN_FUSE_LIMIT_W = 14400.0  # ~63A @ 230V single phase
+DEFAULT_MAIN_FUSE_CURRENT_A = 63.0   # Main fuse per-phase rating in Amps
+DEFAULT_MAX_PHASE_UNBALANCE_A = 20.0 # Maximum allowed unbalance between phases (AS/NZS 4777 standard)
 DEFAULT_SITE_EXPORT_LIMIT_W = 5000.0
 DEFAULT_SOLAR_START_BUFFER_W = 250.0
 DEFAULT_MIN_CHARGE_CURRENT_A = 6.0
@@ -142,6 +151,19 @@ DEFAULT_DEADBAND_W = 250.0
 DEFAULT_MIN_DWELL_SECS = 30
 DEFAULT_SITE_ID = "home-site-1"
 DEFAULT_MQTT_TOPIC_PREFIX = "citrine/ems"
+
+# Phase Wiring Constants
+PHASE_CONNECTION_3PHASE = "3-Phase (L1+L2+L3)"
+PHASE_CONNECTION_L1 = "1-Phase (L1 / Phase A)"
+PHASE_CONNECTION_L2 = "1-Phase (L2 / Phase B)"
+PHASE_CONNECTION_L3 = "1-Phase (L3 / Phase C)"
+
+PHASE_CONNECTIONS = [
+    PHASE_CONNECTION_3PHASE,
+    PHASE_CONNECTION_L1,
+    PHASE_CONNECTION_L2,
+    PHASE_CONNECTION_L3,
+]
 
 # Services
 SERVICE_SET_CONTROLLER_MODE = "set_controller_mode"
