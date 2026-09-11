@@ -111,14 +111,9 @@ class CitrineConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._user_data = user_input
                 return await self.async_step_load_control()
 
-        schema = self.add_suggested_values_to_schema(
-            self._user_schema(),
-            user_input or {},
-        )
-
         return self.async_show_form(
             step_id="user",
-            data_schema=schema,
+            data_schema=self._user_schema(user_input or {}),
             errors=errors,
         )
 
@@ -131,98 +126,141 @@ class CitrineConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data=combined_data,
             )
 
-        schema = self.add_suggested_values_to_schema(
-            self._load_control_schema(),
-            user_input or {},
-        )
-
         return self.async_show_form(
             step_id="load_control",
-            data_schema=schema,
+            data_schema=self._load_control_schema(user_input or {}),
         )
 
     @staticmethod
-    def _user_schema() -> vol.Schema:
+    def _user_schema(user_input: dict[str, Any]) -> vol.Schema:
         return vol.Schema(
             {
-                vol.Required(CONF_NAME, default=DEFAULT_NAME): selector.TextSelector(
+                vol.Required(CONF_NAME, default=user_input.get(CONF_NAME, DEFAULT_NAME)): selector.TextSelector(
                     selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
                 ),
-                vol.Required(CONF_BASE_URL, default="http://localhost:8080"): selector.TextSelector(
+                vol.Required(CONF_BASE_URL, default=user_input.get(CONF_BASE_URL, "http://localhost:8080")): selector.TextSelector(
                     selector.TextSelectorConfig(type=selector.TextSelectorType.URL)
                 ),
-                vol.Required(CONF_TENANT_ID, default=DEFAULT_TENANT_ID): selector.NumberSelector(
+                vol.Required(CONF_TENANT_ID, default=int(user_input.get(CONF_TENANT_ID, DEFAULT_TENANT_ID))): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=1, max=999999, step=1, mode=selector.NumberSelectorMode.BOX)
                 ),
-                vol.Optional(CONF_AUTH_TOKEN): selector.TextSelector(
+                vol.Optional(
+                    CONF_AUTH_TOKEN,
+                    description={"suggested_value": user_input.get(CONF_AUTH_TOKEN)},
+                ): selector.TextSelector(
                     selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
                 ),
-                vol.Required(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): selector.BooleanSelector(),
-                vol.Required(CONF_REQUEST_TIMEOUT, default=DEFAULT_REQUEST_TIMEOUT): selector.NumberSelector(
+                vol.Required(CONF_VERIFY_SSL, default=bool(user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL))): selector.BooleanSelector(),
+                vol.Required(CONF_REQUEST_TIMEOUT, default=int(user_input.get(CONF_REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT))): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=1, max=120, step=1, mode=selector.NumberSelectorMode.BOX)
                 ),
-                vol.Optional(CONF_HASURA_URL): selector.TextSelector(
+                vol.Optional(
+                    CONF_HASURA_URL,
+                    description={"suggested_value": user_input.get(CONF_HASURA_URL)},
+                ): selector.TextSelector(
                     selector.TextSelectorConfig(type=selector.TextSelectorType.URL)
                 ),
-                vol.Optional(CONF_HASURA_TOKEN): selector.TextSelector(
+                vol.Optional(
+                    CONF_HASURA_TOKEN,
+                    description={"suggested_value": user_input.get(CONF_HASURA_TOKEN)},
+                ): selector.TextSelector(
                     selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
                 ),
-                vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): selector.NumberSelector(
+                vol.Optional(CONF_SCAN_INTERVAL, default=int(user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=5, max=3600, step=5, mode=selector.NumberSelectorMode.BOX)
                 ),
-                vol.Optional(CONF_DEFAULT_ID_TAG, default=DEFAULT_DEFAULT_ID_TAG): selector.TextSelector(
+                vol.Optional(CONF_DEFAULT_ID_TAG, default=str(user_input.get(CONF_DEFAULT_ID_TAG, DEFAULT_DEFAULT_ID_TAG))): selector.TextSelector(
                     selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
                 ),
-                vol.Optional(CONF_DEFAULT_EVSE_ID, default=DEFAULT_DEFAULT_EVSE_ID): selector.NumberSelector(
+                vol.Optional(CONF_DEFAULT_EVSE_ID, default=int(user_input.get(CONF_DEFAULT_EVSE_ID, DEFAULT_DEFAULT_EVSE_ID))): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=0, max=999, step=1, mode=selector.NumberSelectorMode.BOX)
                 ),
             }
         )
 
     @staticmethod
-    def _load_control_schema() -> vol.Schema:
+    def _load_control_schema(user_input: dict[str, Any]) -> vol.Schema:
         return vol.Schema(
             {
-                vol.Optional(CONF_GRID_POWER_SENSOR): selector.EntitySelector(
+                vol.Optional(
+                    CONF_GRID_POWER_SENSOR,
+                    description={"suggested_value": user_input.get(CONF_GRID_POWER_SENSOR)},
+                ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
-                vol.Optional(CONF_GRID_PHASE_A_CURRENT_SENSOR): selector.EntitySelector(
+                vol.Optional(
+                    CONF_GRID_PHASE_A_CURRENT_SENSOR,
+                    description={"suggested_value": user_input.get(CONF_GRID_PHASE_A_CURRENT_SENSOR)},
+                ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
-                vol.Optional(CONF_GRID_PHASE_B_CURRENT_SENSOR): selector.EntitySelector(
+                vol.Optional(
+                    CONF_GRID_PHASE_B_CURRENT_SENSOR,
+                    description={"suggested_value": user_input.get(CONF_GRID_PHASE_B_CURRENT_SENSOR)},
+                ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
-                vol.Optional(CONF_GRID_PHASE_C_CURRENT_SENSOR): selector.EntitySelector(
+                vol.Optional(
+                    CONF_GRID_PHASE_C_CURRENT_SENSOR,
+                    description={"suggested_value": user_input.get(CONF_GRID_PHASE_C_CURRENT_SENSOR)},
+                ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
-                vol.Optional(CONF_SOLAR_POWER_SENSOR): selector.EntitySelector(
+                vol.Optional(
+                    CONF_SOLAR_POWER_SENSOR,
+                    description={"suggested_value": user_input.get(CONF_SOLAR_POWER_SENSOR)},
+                ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
-                vol.Optional(CONF_BATTERY_POWER_SENSOR): selector.EntitySelector(
+                vol.Optional(
+                    CONF_BATTERY_POWER_SENSOR,
+                    description={"suggested_value": user_input.get(CONF_BATTERY_POWER_SENSOR)},
+                ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
-                vol.Optional(CONF_BATTERY_SOC_SENSOR): selector.EntitySelector(
+                vol.Optional(
+                    CONF_BATTERY_SOC_SENSOR,
+                    description={"suggested_value": user_input.get(CONF_BATTERY_SOC_SENSOR)},
+                ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
-                vol.Optional(CONF_DOE_IMPORT_LIMIT_SENSOR): selector.EntitySelector(
+                vol.Optional(
+                    CONF_DOE_IMPORT_LIMIT_SENSOR,
+                    description={"suggested_value": user_input.get(CONF_DOE_IMPORT_LIMIT_SENSOR)},
+                ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
-                vol.Optional(CONF_DOE_EXPORT_LIMIT_SENSOR): selector.EntitySelector(
+                vol.Optional(
+                    CONF_DOE_EXPORT_LIMIT_SENSOR,
+                    description={"suggested_value": user_input.get(CONF_DOE_EXPORT_LIMIT_SENSOR)},
+                ): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
                 ),
-                vol.Optional(CONF_CONTROLLER_MODE, default=DEFAULT_CONTROLLER_MODE): selector.SelectSelector(
+                vol.Optional(
+                    CONF_CONTROLLER_MODE,
+                    default=user_input.get(CONF_CONTROLLER_MODE, DEFAULT_CONTROLLER_MODE),
+                ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=CONTROLLER_MODES,
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     )
                 ),
-                vol.Optional(CONF_MAIN_FUSE_LIMIT_W, default=DEFAULT_MAIN_FUSE_LIMIT_W): selector.NumberSelector(
+                vol.Optional(
+                    CONF_MAIN_FUSE_LIMIT_W,
+                    default=float(user_input.get(CONF_MAIN_FUSE_LIMIT_W, DEFAULT_MAIN_FUSE_LIMIT_W)),
+                ): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=1000, max=250000, step=100, mode=selector.NumberSelectorMode.BOX)
                 ),
-                vol.Optional(CONF_SOLAR_START_BUFFER_W, default=DEFAULT_SOLAR_START_BUFFER_W): selector.NumberSelector(
+                vol.Optional(
+                    CONF_SOLAR_START_BUFFER_W,
+                    default=float(user_input.get(CONF_SOLAR_START_BUFFER_W, DEFAULT_SOLAR_START_BUFFER_W)),
+                ): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=0, max=5000, step=50, mode=selector.NumberSelectorMode.BOX)
                 ),
-                vol.Optional(CONF_SITE_PHASES, default=str(DEFAULT_SITE_PHASES)): selector.SelectSelector(
+                vol.Optional(
+                    CONF_SITE_PHASES,
+                    default=str(user_input.get(CONF_SITE_PHASES, DEFAULT_SITE_PHASES)),
+                ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=["1", "3"],
                         mode=selector.SelectSelectorMode.DROPDOWN,
@@ -271,41 +309,52 @@ class CitrineOptionsFlow(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self._config_entry = config_entry
 
-    @staticmethod
-    def _options_schema() -> vol.Schema:
+    def _options_schema(self, current_values: dict[str, Any]) -> vol.Schema:
         return vol.Schema(
             {
                 # Entity Selectors
-                vol.Optional(CONF_GRID_POWER_SENSOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor")
-                ),
-                vol.Optional(CONF_GRID_PHASE_A_CURRENT_SENSOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor")
-                ),
-                vol.Optional(CONF_GRID_PHASE_B_CURRENT_SENSOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor")
-                ),
-                vol.Optional(CONF_GRID_PHASE_C_CURRENT_SENSOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor")
-                ),
-                vol.Optional(CONF_SOLAR_POWER_SENSOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor")
-                ),
-                vol.Optional(CONF_BATTERY_POWER_SENSOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor")
-                ),
-                vol.Optional(CONF_BATTERY_SOC_SENSOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor")
-                ),
-                vol.Optional(CONF_DOE_IMPORT_LIMIT_SENSOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor")
-                ),
-                vol.Optional(CONF_DOE_EXPORT_LIMIT_SENSOR): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor")
-                ),
+                vol.Optional(
+                    CONF_GRID_POWER_SENSOR,
+                    description={"suggested_value": current_values.get(CONF_GRID_POWER_SENSOR)},
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                vol.Optional(
+                    CONF_GRID_PHASE_A_CURRENT_SENSOR,
+                    description={"suggested_value": current_values.get(CONF_GRID_PHASE_A_CURRENT_SENSOR)},
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                vol.Optional(
+                    CONF_GRID_PHASE_B_CURRENT_SENSOR,
+                    description={"suggested_value": current_values.get(CONF_GRID_PHASE_B_CURRENT_SENSOR)},
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                vol.Optional(
+                    CONF_GRID_PHASE_C_CURRENT_SENSOR,
+                    description={"suggested_value": current_values.get(CONF_GRID_PHASE_C_CURRENT_SENSOR)},
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                vol.Optional(
+                    CONF_SOLAR_POWER_SENSOR,
+                    description={"suggested_value": current_values.get(CONF_SOLAR_POWER_SENSOR)},
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                vol.Optional(
+                    CONF_BATTERY_POWER_SENSOR,
+                    description={"suggested_value": current_values.get(CONF_BATTERY_POWER_SENSOR)},
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                vol.Optional(
+                    CONF_BATTERY_SOC_SENSOR,
+                    description={"suggested_value": current_values.get(CONF_BATTERY_SOC_SENSOR)},
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                vol.Optional(
+                    CONF_DOE_IMPORT_LIMIT_SENSOR,
+                    description={"suggested_value": current_values.get(CONF_DOE_IMPORT_LIMIT_SENSOR)},
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
+                vol.Optional(
+                    CONF_DOE_EXPORT_LIMIT_SENSOR,
+                    description={"suggested_value": current_values.get(CONF_DOE_EXPORT_LIMIT_SENSOR)},
+                ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
 
                 # Mode Selector
-                vol.Optional(CONF_CONTROLLER_MODE, default=DEFAULT_CONTROLLER_MODE): selector.SelectSelector(
+                vol.Optional(
+                    CONF_CONTROLLER_MODE,
+                    default=current_values.get(CONF_CONTROLLER_MODE, DEFAULT_CONTROLLER_MODE),
+                ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
                         options=CONTROLLER_MODES,
                         mode=selector.SelectSelectorMode.DROPDOWN,
@@ -313,48 +362,90 @@ class CitrineOptionsFlow(config_entries.OptionsFlow):
                 ),
 
                 # Numeric Limits & Tuning
-                vol.Optional(CONF_MAIN_FUSE_LIMIT_W, default=DEFAULT_MAIN_FUSE_LIMIT_W): selector.NumberSelector(
+                vol.Optional(
+                    CONF_MAIN_FUSE_LIMIT_W,
+                    default=float(current_values.get(CONF_MAIN_FUSE_LIMIT_W, DEFAULT_MAIN_FUSE_LIMIT_W)),
+                ): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=1000, max=250000, step=100, mode=selector.NumberSelectorMode.BOX)
                 ),
-                vol.Optional(CONF_MAIN_FUSE_CURRENT_A, default=DEFAULT_MAIN_FUSE_CURRENT_A): selector.NumberSelector(
+                vol.Optional(
+                    CONF_MAIN_FUSE_CURRENT_A,
+                    default=float(current_values.get(CONF_MAIN_FUSE_CURRENT_A, DEFAULT_MAIN_FUSE_CURRENT_A)),
+                ): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=10, max=500, step=1, mode=selector.NumberSelectorMode.BOX)
                 ),
-                vol.Optional(CONF_MAX_PHASE_UNBALANCE_A, default=DEFAULT_MAX_PHASE_UNBALANCE_A): selector.NumberSelector(
+                vol.Optional(
+                    CONF_MAX_PHASE_UNBALANCE_A,
+                    default=float(current_values.get(CONF_MAX_PHASE_UNBALANCE_A, DEFAULT_MAX_PHASE_UNBALANCE_A)),
+                ): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=0, max=100, step=1, mode=selector.NumberSelectorMode.BOX)
                 ),
-                vol.Optional(CONF_SOLAR_START_BUFFER_W, default=DEFAULT_SOLAR_START_BUFFER_W): selector.NumberSelector(
+                vol.Optional(
+                    CONF_SOLAR_START_BUFFER_W,
+                    default=float(current_values.get(CONF_SOLAR_START_BUFFER_W, DEFAULT_SOLAR_START_BUFFER_W)),
+                ): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=0, max=5000, step=50, mode=selector.NumberSelectorMode.BOX)
                 ),
-                vol.Optional(CONF_MIN_CHARGE_CURRENT_A, default=DEFAULT_MIN_CHARGE_CURRENT_A): selector.NumberSelector(
+                vol.Optional(
+                    CONF_MIN_CHARGE_CURRENT_A,
+                    default=float(current_values.get(CONF_MIN_CHARGE_CURRENT_A, DEFAULT_MIN_CHARGE_CURRENT_A)),
+                ): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=6, max=16, step=1, mode=selector.NumberSelectorMode.BOX)
                 ),
-                vol.Optional(CONF_RAMP_RATE_W_S, default=DEFAULT_RAMP_RATE_W_S): selector.NumberSelector(
+                vol.Optional(
+                    CONF_RAMP_RATE_W_S,
+                    default=float(current_values.get(CONF_RAMP_RATE_W_S, DEFAULT_RAMP_RATE_W_S)),
+                ): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=50, max=10000, step=50, mode=selector.NumberSelectorMode.BOX)
                 ),
-                vol.Optional(CONF_CONTROLLER_INTERVAL_SECS, default=DEFAULT_CONTROLLER_INTERVAL_SECS): selector.NumberSelector(
+                vol.Optional(
+                    CONF_CONTROLLER_INTERVAL_SECS,
+                    default=int(current_values.get(CONF_CONTROLLER_INTERVAL_SECS, DEFAULT_CONTROLLER_INTERVAL_SECS)),
+                ): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=1, max=60, step=1, mode=selector.NumberSelectorMode.BOX)
                 ),
-                vol.Optional(CONF_DEADBAND_W, default=DEFAULT_DEADBAND_W): selector.NumberSelector(
+                vol.Optional(
+                    CONF_DEADBAND_W,
+                    default=float(current_values.get(CONF_DEADBAND_W, DEFAULT_DEADBAND_W)),
+                ): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=0, max=2000, step=50, mode=selector.NumberSelectorMode.BOX)
                 ),
-                vol.Optional(CONF_MIN_DWELL_SECS, default=DEFAULT_MIN_DWELL_SECS): selector.NumberSelector(
+                vol.Optional(
+                    CONF_MIN_DWELL_SECS,
+                    default=int(current_values.get(CONF_MIN_DWELL_SECS, DEFAULT_MIN_DWELL_SECS)),
+                ): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=5, max=600, step=5, mode=selector.NumberSelectorMode.BOX)
                 ),
 
                 # MQTT & Integration Defaults
-                vol.Optional(CONF_SITE_ID, default=DEFAULT_SITE_ID): selector.TextSelector(
+                vol.Optional(
+                    CONF_SITE_ID,
+                    default=str(current_values.get(CONF_SITE_ID, DEFAULT_SITE_ID)),
+                ): selector.TextSelector(
                     selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
                 ),
-                vol.Optional(CONF_MQTT_TOPIC_PREFIX, default=DEFAULT_MQTT_TOPIC_PREFIX): selector.TextSelector(
+                vol.Optional(
+                    CONF_MQTT_TOPIC_PREFIX,
+                    default=str(current_values.get(CONF_MQTT_TOPIC_PREFIX, DEFAULT_MQTT_TOPIC_PREFIX)),
+                ): selector.TextSelector(
                     selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
                 ),
-                vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): selector.NumberSelector(
+                vol.Optional(
+                    CONF_SCAN_INTERVAL,
+                    default=int(current_values.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)),
+                ): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=5, max=3600, step=5, mode=selector.NumberSelectorMode.BOX)
                 ),
-                vol.Optional(CONF_DEFAULT_ID_TAG, default=DEFAULT_DEFAULT_ID_TAG): selector.TextSelector(
+                vol.Optional(
+                    CONF_DEFAULT_ID_TAG,
+                    default=str(current_values.get(CONF_DEFAULT_ID_TAG, DEFAULT_DEFAULT_ID_TAG)),
+                ): selector.TextSelector(
                     selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
                 ),
-                vol.Optional(CONF_DEFAULT_EVSE_ID, default=DEFAULT_DEFAULT_EVSE_ID): selector.NumberSelector(
+                vol.Optional(
+                    CONF_DEFAULT_EVSE_ID,
+                    default=int(current_values.get(CONF_DEFAULT_EVSE_ID, DEFAULT_DEFAULT_EVSE_ID)),
+                ): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=0, max=999, step=1, mode=selector.NumberSelectorMode.BOX)
                 ),
             }
@@ -365,15 +456,8 @@ class CitrineOptionsFlow(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         current_values = {**self._config_entry.data, **self._config_entry.options}
-        valid_values = {k: v for k, v in current_values.items() if v is not None and v != ""}
-
-        schema = self.add_suggested_values_to_schema(
-            self._options_schema(),
-            valid_values,
-        )
-
         return self.async_show_form(
             step_id="init",
-            data_schema=schema,
+            data_schema=self._options_schema(current_values),
         )
 

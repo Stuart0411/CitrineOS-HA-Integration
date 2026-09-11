@@ -45,7 +45,7 @@ def mock_controller_env():
         CONF_SITE_EXPORT_LIMIT_W: 5000.0,
         CONF_SOLAR_START_BUFFER_W: 250.0,
         CONF_MIN_CHARGE_CURRENT_A: 6.0,
-        CONF_SITE_PHASES: 1,
+        CONF_SITE_PHASES: "1",
         CONF_NOMINAL_VOLTAGE: 230.0,
         CONF_DEADBAND_W: 250.0,
         CONF_MIN_DWELL_SECS: 30,
