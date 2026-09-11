@@ -310,3 +310,43 @@ clear_ems_telemetry_error:
       required: false
       selector:
         text:
+
+set_controller_mode:
+  name: Set controller mode
+  description: Change operating mode for the local energy load controller.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
+    controller_mode:
+      required: true
+      example: Solar Only
+      selector:
+        select:
+          options:
+            - "Off"
+            - "Solar Only"
+            - "Solar + Battery"
+            - "Grid Capped (Fast)"
+            - "Dynamic Envelope (DOE)"
+            - "Emergency Safe"
+
+recompute_load_control:
+  name: Recompute load control
+  description: Force an immediate load controller calculation cycle and push limits to CitrineOS.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
+
+emergency_safe_mode:
+  name: Emergency safe mode
+  description: Immediately clamp all active EV chargers to safe minimal/zero power.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
+

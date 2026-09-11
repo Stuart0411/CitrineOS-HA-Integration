@@ -1,18 +1,18 @@
 {
   "domain": "citrine_ha",
-  "name": "CitrineOS HA",
+  "name": "CitrineOS Energy Controller",
   "codeowners": [
     "@ssimpson"
   ],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/your-org/citrine-ha",
+  "documentation": "https://github.com/Stuart0411/CitrineOS-HA-Integration",
   "integration_type": "hub",
-  "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/your-org/citrine-ha/issues",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/Stuart0411/CitrineOS-HA-Integration/issues",
   "loggers": [
     "custom_components.citrine_ha"
   ],
   "requirements": [],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

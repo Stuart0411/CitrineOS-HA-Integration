@@ -89,3 +89,62 @@ ATTR_SITE_ID = "site_id"
 ATTR_TELEMETRY_LIMIT = "telemetry_limit"
 
 DEFAULT_PROFILE_KIND = "Absolute"
+
+# Load Controller Configuration Keys
+CONF_GRID_POWER_SENSOR = "grid_power_sensor"
+CONF_SOLAR_POWER_SENSOR = "solar_power_sensor"
+CONF_BATTERY_POWER_SENSOR = "battery_power_sensor"
+CONF_BATTERY_SOC_SENSOR = "battery_soc_sensor"
+CONF_BATTERY_MIN_SOC = "battery_min_soc"
+CONF_MAIN_FUSE_LIMIT_W = "main_fuse_limit_w"
+CONF_SITE_EXPORT_LIMIT_W = "site_export_limit_w"
+CONF_SOLAR_START_BUFFER_W = "solar_start_buffer_w"
+CONF_MIN_CHARGE_CURRENT_A = "min_charge_current_a"
+CONF_RAMP_RATE_W_S = "ramp_rate_w_s"
+CONF_CONTROLLER_INTERVAL_SECS = "controller_interval_secs"
+CONF_CONTROLLER_MODE = "controller_mode"
+CONF_SITE_PHASES = "site_phases"
+CONF_NOMINAL_VOLTAGE = "nominal_voltage"
+CONF_DEADBAND_W = "deadband_w"
+CONF_MIN_DWELL_SECS = "min_dwell_secs"
+CONF_SITE_ID = "site_id"
+CONF_MQTT_TOPIC_PREFIX = "mqtt_topic_prefix"
+
+# Controller Operation Modes
+MODE_OFF = "Off"
+MODE_SOLAR_ONLY = "Solar Only"
+MODE_SOLAR_BATTERY = "Solar + Battery"
+MODE_GRID_CAPPED = "Grid Capped (Fast)"
+MODE_DYNAMIC_DOE = "Dynamic Envelope (DOE)"
+MODE_EMERGENCY_SAFE = "Emergency Safe"
+
+CONTROLLER_MODES = [
+    MODE_OFF,
+    MODE_SOLAR_ONLY,
+    MODE_SOLAR_BATTERY,
+    MODE_GRID_CAPPED,
+    MODE_DYNAMIC_DOE,
+    MODE_EMERGENCY_SAFE,
+]
+
+# Controller Defaults
+DEFAULT_MAIN_FUSE_LIMIT_W = 14400.0  # ~63A @ 230V single phase
+DEFAULT_SITE_EXPORT_LIMIT_W = 5000.0
+DEFAULT_SOLAR_START_BUFFER_W = 250.0
+DEFAULT_MIN_CHARGE_CURRENT_A = 6.0
+DEFAULT_RAMP_RATE_W_S = 500.0
+DEFAULT_CONTROLLER_INTERVAL_SECS = 3
+DEFAULT_CONTROLLER_MODE = MODE_SOLAR_ONLY
+DEFAULT_SITE_PHASES = 1
+DEFAULT_NOMINAL_VOLTAGE = 230.0
+DEFAULT_BATTERY_MIN_SOC = 20.0
+DEFAULT_DEADBAND_W = 250.0
+DEFAULT_MIN_DWELL_SECS = 30
+DEFAULT_SITE_ID = "home-site-1"
+DEFAULT_MQTT_TOPIC_PREFIX = "citrine/ems"
+
+# Services
+SERVICE_SET_CONTROLLER_MODE = "set_controller_mode"
+SERVICE_RECOMPUTE_LOAD_CONTROL = "recompute_load_control"
+SERVICE_EMERGENCY_SAFE_MODE = "emergency_safe_mode"
+

@@ -63,6 +63,84 @@ class CitrineClient:
         """Validate API reachability and credentials."""
         await self._request("GET", "/data/ocpprouter/systemConfig")
 
+    async def get_charging_stations(self) -> list[dict[str, Any]]:
+        """Fetch charging stations directly from CitrineOS REST data endpoints."""
+        params = {"tenantId": self._tenant_id}
+        paths = [
+            "/data/configuration/chargingStation",
+            "/data/chargingStation",
+            "/data/ocpprouter/chargingStation",
+            "/data/monitoring/chargingStation",
+            "/data/configuration/chargingStations",
+            "/data/chargingStations",
+        ]
+        try:
+            resp = await self._request_with_fallback_paths("GET", paths, params=params)
+            return self._extract_items_from_response(resp)
+        except CitrineApiError as err:
+            _LOGGER.debug("REST charging stations query failed: %s", err)
+            return []
+
+    async def get_connectors(self) -> list[dict[str, Any]]:
+        """Fetch connectors/EVSEs directly from CitrineOS REST data endpoints."""
+        params = {"tenantId": self._tenant_id}
+        paths = [
+            "/data/configuration/connector",
+            "/data/configuration/evse",
+            "/data/connector",
+            "/data/evse",
+            "/data/configuration/connectors",
+            "/data/connectors",
+        ]
+        try:
+            resp = await self._request_with_fallback_paths("GET", paths, params=params)
+            return self._extract_items_from_response(resp)
+        except CitrineApiError as err:
+            _LOGGER.debug("REST connectors query failed: %s", err)
+            return []
+
+    async def get_transactions(self, *, limit: int = 500) -> list[dict[str, Any]]:
+        """Fetch active/recent transactions directly from CitrineOS REST data endpoints."""
+        params = {"tenantId": self._tenant_id, "limit": max(1, min(limit, 2000))}
+        paths = [
+            "/data/transactions/transaction",
+            "/data/transactions",
+            "/data/transactions/activeTransactions",
+            "/data/transaction",
+        ]
+        try:
+            resp = await self._request_with_fallback_paths("GET", paths, params=params)
+            return self._extract_items_from_response(resp)
+        except CitrineApiError as err:
+            _LOGGER.debug("REST transactions query failed: %s", err)
+            return []
+
+    async def discover_chargers_rest(self) -> dict[str, Any]:
+        """Perform full discovery via CitrineOS REST endpoints (no Hasura required)."""
+        stations = await self.get_charging_stations()
+        connectors = await self.get_connectors()
+        transactions = await self.get_transactions()
+        return {
+            "stations": stations,
+            "connectors": connectors,
+            "transactions": transactions,
+        }
+
+    @staticmethod
+    def _extract_items_from_response(response: Any) -> list[dict[str, Any]]:
+        """Normalize varied REST responses (list, dict wrapper, etc.) into a list of dicts."""
+        if isinstance(response, list):
+            return [item for item in response if isinstance(item, dict)]
+        if isinstance(response, dict):
+            for key in ("data", "items", "rows", "chargingStations", "connectors", "transactions"):
+                candidate = response.get(key)
+                if isinstance(candidate, list):
+                    return [item for item in candidate if isinstance(item, dict)]
+            # If the response is a single object representing an entity
+            if "id" in response or "stationId" in response or "identifier" in response:
+                return [response]
+        return []
+
     async def get_ems_intake_telemetry(
         self,
         *,

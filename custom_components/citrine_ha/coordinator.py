@@ -72,12 +72,62 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         tenant_id = int(self._entry_data[CONF_TENANT_ID])
         intake_telemetry = await self._fetch_intake_telemetry_with_fallback(tenant_id)
 
+        # 1. Try Hasura discovery if configured
+        if self._hasura_client:
+            hasura_payload = await self._try_hasura_discovery(tenant_id, intake_telemetry)
+            if hasura_payload and hasura_payload.get("stations"):
+                return hasura_payload
+            _LOGGER.debug("Hasura discovery returned no stations or failed; falling back to direct CitrineOS REST discovery")
+
+        # 2. Direct CitrineOS REST Discovery (Zero-Hasura primary / fallback)
+        try:
+            rest_data = await self._citrine_client.discover_chargers_rest()
+            rest_stations = rest_data.get("stations", [])
+            rest_connectors = rest_data.get("connectors", [])
+            rest_transactions = rest_data.get("transactions", [])
+
+            if rest_stations:
+                merged_stations = self._merge_station_state(
+                    stations=rest_stations,
+                    connectors=rest_connectors,
+                    transactions=rest_transactions,
+                )
+                self._refresh_station_caches(merged_stations)
+                return {
+                    "stations": merged_stations,
+                    "connectors": rest_connectors,
+                    "transactions": rest_transactions,
+                    "intake_telemetry": intake_telemetry,
+                    "source": "citrine_rest",
+                }
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("CitrineOS REST discovery failed: %s", err)
+
+        # 3. Retain cached stations or return fallback discovery state
+        if self.data and isinstance(self.data.get("stations"), list):
+            previous_stations = [
+                item for item in self.data.get("stations", []) if isinstance(item, dict)
+            ]
+            if previous_stations:
+                _LOGGER.warning(
+                    "Discovery returned zero stations; retaining %s previously discovered stations",
+                    len(previous_stations),
+                )
+                return {
+                    **self.data,
+                    "intake_telemetry": intake_telemetry,
+                }
+
+        return self._fallback_discovery_payload(intake_telemetry, "No charging stations discovered via Hasura or Citrine REST")
+
+    async def _try_hasura_discovery(
+        self,
+        tenant_id: int,
+        intake_telemetry: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Execute Hasura GraphQL discovery query with automatic schema adaptation."""
         if not self._hasura_client:
-            return {
-                "stations": [],
-                "source": "none",
-                "intake_telemetry": intake_telemetry,
-            }
+            return None
 
         query = self._entry_options.get(CONF_HASURA_QUERY) or self._entry_data.get(
             CONF_HASURA_QUERY,
@@ -110,10 +160,6 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 message = f"Hasura discovery failed: {last_hasura_error}"
             minimal_result = await self._try_minimal_discovery_query(tenant_id)
             if minimal_result is not None:
-                _LOGGER.warning(
-                    "%s. Falling back to minimal discovery query without Transactions.",
-                    message,
-                )
                 data = minimal_result.get("data", {})
                 stations = self._extract_stations(data)
                 connectors = self._extract_connectors(data)
@@ -122,19 +168,18 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     connectors=connectors,
                     transactions=[],
                 )
-                self._refresh_station_caches(merged_stations)
-                return {
-                    "stations": merged_stations,
-                    "connectors": connectors,
-                    "transactions": [],
-                    "intake_telemetry": intake_telemetry,
-                    "source": "hasura_minimal",
-                    "hasura_url": self._entry_data.get(CONF_HASURA_URL),
-                    "hasura_error": message,
-                }
-
-            _LOGGER.warning("%s. Falling back to cached or empty discovery state.", message)
-            return self._fallback_discovery_payload(intake_telemetry, message)
+                if merged_stations:
+                    self._refresh_station_caches(merged_stations)
+                    return {
+                        "stations": merged_stations,
+                        "connectors": connectors,
+                        "transactions": [],
+                        "intake_telemetry": intake_telemetry,
+                        "source": "hasura_minimal",
+                        "hasura_url": self._entry_data.get(CONF_HASURA_URL),
+                        "hasura_error": message,
+                    }
+            return None
 
         data = result.get("data", {})
         stations = self._extract_stations(data)
@@ -145,26 +190,17 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             connectors=connectors,
             transactions=transactions,
         )
-        if not merged_stations and self.data and isinstance(self.data.get("stations"), list):
-            previous_stations = [
-                item for item in self.data.get("stations", []) if isinstance(item, dict)
-            ]
-            if previous_stations:
-                _LOGGER.warning(
-                    "Discovery returned zero stations; retaining %s previously discovered stations",
-                    len(previous_stations),
-                )
-                merged_stations = previous_stations
-        self._refresh_station_caches(merged_stations)
-
-        return {
-            "stations": merged_stations,
-            "connectors": connectors,
-            "transactions": transactions,
-            "intake_telemetry": intake_telemetry,
-            "source": "hasura",
-            "hasura_url": self._entry_data.get(CONF_HASURA_URL),
-        }
+        if merged_stations:
+            self._refresh_station_caches(merged_stations)
+            return {
+                "stations": merged_stations,
+                "connectors": connectors,
+                "transactions": transactions,
+                "intake_telemetry": intake_telemetry,
+                "source": "hasura",
+                "hasura_url": self._entry_data.get(CONF_HASURA_URL),
+            }
+        return None
 
     def _fallback_discovery_payload(
         self,

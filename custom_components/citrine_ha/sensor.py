@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
+from homeassistant.const import EntityCategory, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -15,6 +19,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import CONF_TENANT_ID, DOMAIN
 from .coordinator import CitrineCoordinator
+from .load_controller import CitrineLoadController
 
 
 async def async_setup_entry(
@@ -25,6 +30,7 @@ async def async_setup_entry(
     """Set up sensor entities from coordinator data."""
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: CitrineCoordinator = data["coordinator"]
+    controller: CitrineLoadController = data["controller"]
 
     known_ids: set[str] = set()
 
@@ -48,6 +54,13 @@ async def async_setup_entry(
     async_add_entities(_build_entities())
     async_add_entities(
         [
+            # Site Controller Sensors
+            CitrineLoadControllerStateSensor(controller, entry),
+            CitrineAllocatedEvPowerSensor(controller, entry),
+            CitrineSiteHeadroomPowerSensor(controller, entry),
+            CitrineSolarSurplusPowerSensor(controller, entry),
+            CitrineActiveEvCountSensor(controller, entry),
+            # Telemetry Intake Sensors
             CitrineEmsIntakeAcceptedSensor(coordinator, entry),
             CitrineEmsIntakeRejectedSensor(coordinator, entry),
             CitrineEmsIntakeTotalSensor(coordinator, entry),
@@ -679,3 +692,134 @@ class CitrineEmsIntakeRejectedSensor(CoordinatorEntity[CitrineCoordinator], Sens
     def native_value(self) -> int:
         telemetry = self.coordinator.data.get("intake_telemetry", {})
         return int(telemetry.get("rejected", 0) or 0)
+
+
+def _site_device_info(entry: ConfigEntry) -> DeviceInfo:
+    tenant = entry.data.get(CONF_TENANT_ID, 1)
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"{tenant}:site_controller")},
+        name="Citrine Energy Controller Hub",
+        manufacturer="CitrineOS",
+        model="Local Load Controller",
+        sw_version="0.2.0",
+    )
+
+
+class CitrineLoadControllerStateSensor(SensorEntity):
+    """Real-time operation state of the energy controller."""
+
+    _attr_icon = "mdi:shield-sync"
+
+    def __init__(self, controller: CitrineLoadController, entry: ConfigEntry) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_controller_state"
+        self._attr_name = "Citrine Controller State"
+
+    @property
+    def native_value(self) -> str:
+        return self._controller.state_status
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "mode": self._controller.mode,
+            "last_run": self._controller.last_run_timestamp,
+            "last_error": self._controller.last_error,
+            "active_ev_count": self._controller.active_ev_count,
+        }
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _site_device_info(self._entry)
+
+
+class CitrineAllocatedEvPowerSensor(SensorEntity):
+    """Total allocated power for active EV charging."""
+
+    _attr_icon = "mdi:ev-station"
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+
+    def __init__(self, controller: CitrineLoadController, entry: ConfigEntry) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_allocated_ev_power"
+        self._attr_name = "Citrine Allocated EV Power"
+
+    @property
+    def native_value(self) -> float:
+        return round(self._controller.allocated_ev_power_w, 1)
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _site_device_info(self._entry)
+
+
+class CitrineSiteHeadroomPowerSensor(SensorEntity):
+    """Remaining site power headroom before reaching main fuse limit."""
+
+    _attr_icon = "mdi:speedometer"
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+
+    def __init__(self, controller: CitrineLoadController, entry: ConfigEntry) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_site_headroom_power"
+        self._attr_name = "Citrine Site Headroom Power"
+
+    @property
+    def native_value(self) -> float:
+        return round(self._controller.site_headroom_w, 1)
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _site_device_info(self._entry)
+
+
+class CitrineSolarSurplusPowerSensor(SensorEntity):
+    """Available excess solar generation for EV charging."""
+
+    _attr_icon = "mdi:solar-power"
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+
+    def __init__(self, controller: CitrineLoadController, entry: ConfigEntry) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_solar_surplus_power"
+        self._attr_name = "Citrine Solar Surplus Power"
+
+    @property
+    def native_value(self) -> float:
+        return round(self._controller.solar_surplus_w, 1)
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _site_device_info(self._entry)
+
+
+class CitrineActiveEvCountSensor(SensorEntity):
+    """Count of currently active EVs connected and managed."""
+
+    _attr_icon = "mdi:car-electric"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, controller: CitrineLoadController, entry: ConfigEntry) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_active_ev_count"
+        self._attr_name = "Citrine Active EV Count"
+
+    @property
+    def native_value(self) -> int:
+        return self._controller.active_ev_count
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _site_device_info(self._entry)
+

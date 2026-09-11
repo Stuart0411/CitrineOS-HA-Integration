@@ -12,8 +12,9 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_TENANT_ID, DOMAIN
+from .const import CONF_TENANT_ID, CONTROLLER_MODES, DOMAIN
 from .coordinator import CitrineCoordinator
+from .load_controller import CitrineLoadController
 from .profile_controls import async_push_profile_update
 
 
@@ -25,6 +26,7 @@ async def async_setup_entry(
     """Set up select entities."""
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: CitrineCoordinator = data["coordinator"]
+    controller: CitrineLoadController = data["controller"]
 
     known_ids: set[str] = set()
 
@@ -36,6 +38,8 @@ async def async_setup_entry(
                 continue
             known_ids.add(station_id)
             capabilities = coordinator.get_station_capabilities(str(station_id))
+            entities.append(CitrineStationOverrideModeSelect(controller, entry, station))
+            entities.append(CitrineStationPrioritySelect(controller, entry, station))
             entities.append(CitrineStationProfileUnitSelect(coordinator, entry, station))
             entities.append(CitrineStationProfilePurposeSelect(coordinator, entry, station))
             entities.append(CitrineStationProfileKindSelect(coordinator, entry, station))
@@ -46,6 +50,7 @@ async def async_setup_entry(
         return entities
 
     async_add_entities(_build_entities())
+    async_add_entities([CitrineControllerModeSelect(controller, entry)])
 
     def _async_handle_update() -> None:
         new_entities = _build_entities()
@@ -308,3 +313,141 @@ class CitrineStationProfileTxModeSelect(CitrineProfileSelectBase):
     @property
     def options(self) -> list[str]:
         return ["safe_fallback", "strict_txprofile"]
+
+
+class CitrineControllerModeSelect(SelectEntity):
+    """Select entity for the site-wide load controller mode."""
+
+    _attr_icon = "mdi:tune-vertical"
+
+    def __init__(self, controller: CitrineLoadController, entry: ConfigEntry) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_controller_mode_select"
+        self._attr_name = "Citrine Controller Mode"
+
+    @property
+    def options(self) -> list[str]:
+        return CONTROLLER_MODES
+
+    @property
+    def current_option(self) -> str:
+        return self._controller.mode
+
+    async def async_select_option(self, option: str) -> None:
+        if option in CONTROLLER_MODES:
+            self._controller.set_mode(option)
+            self.async_write_ha_state()
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        tenant = self._entry.data.get(CONF_TENANT_ID, 1)
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"{tenant}:site_controller")},
+            name="Citrine Energy Controller Hub",
+            manufacturer="CitrineOS",
+            model="Local Load Controller",
+            sw_version="0.2.0",
+        )
+
+
+class CitrineStationOverrideModeSelect(SelectEntity):
+    """Per-station override mode select (Auto, Boost, Pause)."""
+
+    _attr_icon = "mdi:car-speed-limiter"
+
+    def __init__(
+        self,
+        controller: CitrineLoadController,
+        entry: ConfigEntry,
+        station: dict[str, Any],
+    ) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._station_id = str(station["id"])
+        self._station = station
+        self._attr_unique_id = f"{entry.entry_id}_{self._station_id}_override_mode"
+        self._attr_name = f"{self._station_id} Control Override"
+
+    @property
+    def options(self) -> list[str]:
+        return ["auto", "boost", "pause"]
+
+    @property
+    def current_option(self) -> str:
+        return self._controller._station_overrides.get(self._station_id, "auto")
+
+    async def async_select_option(self, option: str) -> None:
+        if option in self.options:
+            self._controller.set_station_override(self._station_id, option)
+            self.async_write_ha_state()
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        tenant = self._station.get("tenantId", self._entry.data.get(CONF_TENANT_ID, 1))
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"{tenant}:{self._station_id}")},
+            name=f"Citrine Charger {self._station_id}",
+            manufacturer=self._station.get("chargePointVendor") or "Unknown",
+            model=self._station.get("chargePointModel") or self._station.get("protocol"),
+            sw_version=self._station.get("firmwareVersion"),
+        )
+
+
+class CitrineStationPrioritySelect(SelectEntity):
+    """Per-station priority selector (1 - Lowest to 5 - Highest)."""
+
+    _attr_icon = "mdi:numeric-3-circle"
+
+    def __init__(
+        self,
+        controller: CitrineLoadController,
+        entry: ConfigEntry,
+        station: dict[str, Any],
+    ) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._station_id = str(station["id"])
+        self._station = station
+        self._attr_unique_id = f"{entry.entry_id}_{self._station_id}_priority_select"
+        self._attr_name = f"{self._station_id} Priority"
+
+    @property
+    def options(self) -> list[str]:
+        return ["1 - Lowest", "2 - Low", "3 - Normal", "4 - High", "5 - Highest"]
+
+    @property
+    def current_option(self) -> str:
+        priority = self._controller._station_priorities.get(self._station_id, 3)
+        mapping = {
+            1: "1 - Lowest",
+            2: "2 - Low",
+            3: "3 - Normal",
+            4: "4 - High",
+            5: "5 - Highest",
+        }
+        return mapping.get(priority, "3 - Normal")
+
+    async def async_select_option(self, option: str) -> None:
+        priority_map = {
+            "1 - Lowest": 1,
+            "2 - Low": 2,
+            "3 - Normal": 3,
+            "4 - High": 4,
+            "5 - Highest": 5,
+        }
+        val = priority_map.get(option, 3)
+        self._controller.set_station_priority(self._station_id, val)
+        self.async_write_ha_state()
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        tenant = self._station.get("tenantId", self._entry.data.get(CONF_TENANT_ID, 1))
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"{tenant}:{self._station_id}")},
+            name=f"Citrine Charger {self._station_id}",
+            manufacturer=self._station.get("chargePointVendor") or "Unknown",
+            model=self._station.get("chargePointModel") or self._station.get("protocol"),
+            sw_version=self._station.get("firmwareVersion"),
+        )
+

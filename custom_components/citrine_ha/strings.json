@@ -3,36 +3,61 @@
     "step": {
       "user": {
         "title": "Connect to CitrineOS",
-        "description": "Configure CitrineOS API and optional Hasura discovery.",
+        "description": "Configure your CitrineOS server connection and credentials.",
         "data": {
-          "name": "Name",
-          "base_url": "CitrineOS base URL",
+          "name": "Integration Name",
+          "base_url": "CitrineOS Base URL (e.g. http://localhost:8080)",
           "tenant_id": "Tenant ID",
-          "auth_token": "Bearer token",
-          "verify_ssl": "Verify TLS certificate",
-          "request_timeout": "Request timeout (seconds)",
+          "auth_token": "Bearer Token (optional)",
+          "verify_ssl": "Verify TLS Certificate",
+          "request_timeout": "Request Timeout (seconds)",
           "hasura_url": "Hasura GraphQL URL (optional)",
-          "hasura_token": "Hasura admin/JWT token (optional)",
-          "hasura_query": "Hasura discovery query",
-          "scan_interval": "Discovery scan interval (seconds)",
-          "default_id_tag": "Default ID tag",
+          "hasura_token": "Hasura Token (optional)",
+          "scan_interval": "Charger Discovery Interval (seconds)",
+          "default_id_tag": "Default RFID / Start Tag",
           "default_evse_id": "Default EVSE ID"
+        }
+      },
+      "load_control": {
+        "title": "Local Energy & Load Controller",
+        "description": "Configure telemetry sensors and site power limits for intelligent solar surplus tracking and grid protection.",
+        "data": {
+          "grid_power_sensor": "Grid Power Sensor (+ import / - export in Watts)",
+          "solar_power_sensor": "Solar Power Generation Sensor (Watts)",
+          "battery_power_sensor": "Home Battery Power Sensor (+ discharge / - charge in Watts)",
+          "battery_soc_sensor": "Home Battery State of Charge Sensor (%)",
+          "controller_mode": "Initial Control Mode",
+          "main_fuse_limit_w": "Main Grid Fuse Import Safety Limit (Watts)",
+          "solar_start_buffer_w": "Solar Surplus Buffer (Watts)",
+          "site_phases": "Site Electrical Supply (1-Phase or 3-Phase)"
         }
       }
     },
     "error": {
-      "cannot_connect": "Cannot connect",
-      "invalid_auth": "Invalid authentication"
+      "cannot_connect": "Cannot connect to CitrineOS server. Please check the URL and network reachability.",
+      "invalid_auth": "Authentication failed. Please verify your bearer or Hasura token."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "CitrineOS options",
+        "title": "CitrineOS & Energy Controller Settings",
+        "description": "Tune real-time load management, sensors, safety limits, and charger polling.",
         "data": {
-          "scan_interval": "Discovery scan interval (seconds)",
-          "hasura_query": "Hasura discovery query",
-          "default_id_tag": "Default ID tag",
+          "grid_power_sensor": "Grid Power Sensor (+ import / - export in Watts)",
+          "solar_power_sensor": "Solar Power Generation Sensor (Watts)",
+          "battery_power_sensor": "Home Battery Power Sensor (+ discharge / - charge in Watts)",
+          "battery_soc_sensor": "Home Battery State of Charge Sensor (%)",
+          "controller_mode": "Active Control Mode",
+          "main_fuse_limit_w": "Main Grid Fuse Limit (Watts)",
+          "solar_start_buffer_w": "Solar Surplus Buffer (Watts)",
+          "min_charge_current_a": "Minimum EV Charging Current Floor (Amps per phase)",
+          "ramp_rate_w_s": "Maximum Power Ramp Slew Rate (W/s)",
+          "controller_interval_secs": "Controller Refresh Loop Interval (seconds)",
+          "deadband_w": "Power Update Deadband (Watts)",
+          "min_dwell_secs": "Minimum State Dwell Time (seconds)",
+          "scan_interval": "Discovery Scan Interval (seconds)",
+          "default_id_tag": "Default ID Tag",
           "default_evse_id": "Default EVSE ID"
         }
       }

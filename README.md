@@ -1,17 +1,78 @@
-# CitrineOS Home Assistant Custom Component (Scaffold)
+# CitrineOS Home Assistant Energy Controller
 
 <p align="center">
   <img src="https://avatars.githubusercontent.com/u/132117031?s=200&v=4" alt="CitrineOS Logo" width="120" height="120" />
 </p>
 
-This repository now contains a scaffolded Home Assistant custom component for CitrineOS:
+A powerful, user-friendly Home Assistant integration and local load controller for CitrineOS. It bridges Home Assistant's local sensing (grid meter, solar inverter, home battery) with CitrineOS's OCPP smart charging layer to provide automated solar surplus tracking, main fuse protection, priority EV power allocation, and CSIP-Aus dynamic operating envelopes.
 
 - Domain: `citrine_ha`
 - Path: `custom_components/citrine_ha`
-- Supports UI config flow
-- Supports optional Hasura GraphQL discovery
-- Creates charger devices and entities from discovery
-- Supports start/stop charging and station/group load limit services
+- Supports UI Config Flow & full Options Flow
+- Multi-mode real-time closed loop energy governor (1-2s cycle)
+- Automated solar surplus & battery discharge allocation
+- Dynamic multi-station priority weighting and minimum pilot current ($6\text{ A}$) protection
+- Dual device architecture: **Citrine Energy Controller Hub** & **Per-Station Charger Controls**
+
+---
+
+## Key Features
+
+### 1. Automated Local Load Controller
+* **Real-time Closed Loop:** Continuously evaluates grid import/export, solar generation, and home battery power every 1–3 seconds.
+* **Main Fuse Protection:** Enforces hard site import limits with instantaneous asymmetric curtailment if household loads spike.
+* **Anti-Chatter & Dwell Protection:** Enforces a $6\text{ A}$ minimum pilot floor ($1.38\text{ kW}$ 1-ph / $4.14\text{ kW}$ 3-ph) and minimum 30-second dwell time to protect EV contactors against intermittent cloud cover or appliance cycling.
+* **Deadband Slew Limiting:** Power changes smaller than the deadband (default $250\text{ W}$) are filtered out to prevent unnecessary network overhead and relay wear.
+
+### 2. Intelligent Operating Modes
+Selectable on the fly via `select.citrine_controller_mode`:
+* **Solar Only:** Charges strictly from excess solar generation above a configurable start buffer.
+* **Solar + Battery:** Uses excess solar and allows drawing from the home battery down to a minimum configurable SOC.
+* **Grid Capped (Fast):** Maximizes EV charging speed while ensuring total site load stays safely below the main grid fuse rating.
+* **Dynamic Envelope (DOE):** Follows dynamic utility operating envelopes (CSIP-Aus / IEEE 2030.5).
+* **Off / Emergency Safe:** Suspends all charging or drops power to safe minimums immediately.
+
+### 3. Multi-Station Power Allocator
+* Dynamically balances available site power across multiple connected EVSEs.
+* Supports **Per-Station Priority (1 to 5)**: higher-priority vehicles receive power first.
+* Supports **Per-Station Mode Overrides**: `auto` (follows site controller), `boost` (max power override), and `pause` (temporarily suspend).
+
+---
+
+## Entities Provided
+
+### Site Hub: `Citrine Energy Controller Hub`
+| Entity | Type | Description |
+| :--- | :--- | :--- |
+| `select.citrine_controller_mode` | Select | Active site mode (`Solar Only`, `Solar + Battery`, `Grid Capped`, `Off`, etc.) |
+| `sensor.citrine_controller_state` | Sensor | State summary (`Tracking Solar`, `Curtailing`, `Normal`, `Safe Fallback`) |
+| `sensor.citrine_allocated_ev_power` | Power Sensor | Real-time Watts allocated across all EVSEs |
+| `sensor.citrine_site_headroom_power` | Power Sensor | Remaining Watts before reaching main fuse limit |
+| `sensor.citrine_solar_surplus_power` | Power Sensor | Available excess solar generation in Watts |
+| `sensor.citrine_active_ev_count` | Sensor | Number of actively charging / connected EVs |
+| `number.citrine_main_fuse_limit` | Number | Site main fuse import limit (Watts) |
+| `number.citrine_solar_start_buffer` | Number | Surplus buffer required before starting charging (Watts) |
+| `number.citrine_min_charge_current` | Number | Pilot current floor ($6\text{ A} - 16\text{ A}$) |
+| `number.citrine_max_ramp_rate` | Number | Maximum power ramp rate ($\text{W/s}$) |
+| `button.citrine_recompute_load_control` | Button | Trigger an immediate controller calculation cycle |
+| `button.citrine_emergency_safe_mode` | Button | Immediate emergency power curtailment |
+
+### Discovered Chargers: `Citrine Charger <ID>`
+* **Status Sensors:** Online state, Session state, Connector count, Protocol, OCPP Heartbeat age.
+* **Control Selects:** Control Override (`auto`, `boost`, `pause`), Station Priority (`1 - Lowest` to `5 - Highest`).
+* **Buttons:** Start Charging, Stop Charging, Apply Profile, Clear Profile, Dynamic Session Start/Stop.
+
+---
+
+## Services
+
+* `citrine_ha.set_controller_mode` — Change active site control mode.
+* `citrine_ha.recompute_load_control` — Force an immediate control cycle.
+* `citrine_ha.emergency_safe_mode` — Immediately curtail EV loads.
+* `citrine_ha.start_charging` / `citrine_ha.stop_charging` — Remote transaction controls.
+* `citrine_ha.set_station_limit` / `citrine_ha.set_group_limit` — Set static limits.
+* `citrine_ha.set_charging_profile` / `citrine_ha.clear_charging_profile` — Advanced OCPP profile dispatch.
+
 
 ## Implemented capabilities
 

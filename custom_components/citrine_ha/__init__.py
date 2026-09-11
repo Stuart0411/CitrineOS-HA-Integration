@@ -37,6 +37,7 @@ from .const import (
     ATTR_TELEMETRY_LIMIT,
     CONF_AUTH_TOKEN,
     CONF_BASE_URL,
+    CONF_CONTROLLER_MODE,
     CONF_DEFAULT_EVSE_ID,
     CONF_DEFAULT_ID_TAG,
     CONF_HASURA_TOKEN,
@@ -47,19 +48,24 @@ from .const import (
     DEFAULT_DEFAULT_EVSE_ID,
     DEFAULT_DEFAULT_ID_TAG,
     DOMAIN,
+    MODE_EMERGENCY_SAFE,
     PLATFORMS,
-    SERVICE_SET_GROUP_LIMIT,
-    SERVICE_SET_CHARGING_PROFILE,
     SERVICE_CLEAR_CHARGING_PROFILE,
+    SERVICE_CLEAR_EMS_TELEMETRY_ERROR,
+    SERVICE_EMERGENCY_SAFE_MODE,
+    SERVICE_RECOMPUTE_LOAD_CONTROL,
+    SERVICE_SET_CHARGING_PROFILE,
+    SERVICE_SET_CONTROLLER_MODE,
+    SERVICE_SET_GROUP_LIMIT,
     SERVICE_SET_STATION_LIMIT,
     SERVICE_START_CHARGING,
     SERVICE_STOP_CHARGING,
     SERVICE_SYNC_DISCOVERY_NOW,
     SERVICE_SYNC_EMS_TELEMETRY_NOW,
-    SERVICE_CLEAR_EMS_TELEMETRY_ERROR,
 )
 from .coordinator import CitrineCoordinator
 from .hasura_client import HasuraClient
+from .load_controller import CitrineLoadController
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -107,21 +113,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as err:  # noqa: BLE001
         raise ConfigEntryNotReady(f"Initial Citrine refresh failed: {err}") from err
 
+    controller = CitrineLoadController(
+        hass,
+        entry=entry,
+        coordinator=coordinator,
+        client=client,
+    )
+
     hass.data[DOMAIN][entry.entry_id] = {
         "client": client,
         "hasura_client": hasura_client,
         "coordinator": coordinator,
+        "controller": controller,
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
+    await controller.async_start()
     await _async_register_services(hass)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    entry_data = hass.data[DOMAIN].get(entry.entry_id)
+    if entry_data and "controller" in entry_data:
+        await entry_data["controller"].async_stop()
+
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
@@ -390,6 +409,45 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         ctx = _resolve_context(hass, call)
         coordinator: CitrineCoordinator = ctx["coordinator"]
         coordinator.clear_intake_telemetry_error()
+
+    async def async_handle_set_controller_mode(call: ServiceCall) -> None:
+        ctx = _resolve_context(hass, call)
+        controller: CitrineLoadController = ctx["controller"]
+        new_mode = str(call.data[CONF_CONTROLLER_MODE])
+        controller.set_mode(new_mode)
+
+    async def async_handle_recompute_load_control(call: ServiceCall) -> None:
+        ctx = _resolve_context(hass, call)
+        controller: CitrineLoadController = ctx["controller"]
+        await controller.async_recompute()
+
+    async def async_handle_emergency_safe_mode(call: ServiceCall) -> None:
+        ctx = _resolve_context(hass, call)
+        controller: CitrineLoadController = ctx["controller"]
+        controller.set_mode(MODE_EMERGENCY_SAFE)
+
+    _register(
+        SERVICE_SET_CONTROLLER_MODE,
+        async_handle_set_controller_mode,
+        vol.Schema(
+            {
+                vol.Required(CONF_CONTROLLER_MODE): str,
+                vol.Optional(ATTR_ENTRY_ID): str,
+            }
+        ),
+    )
+
+    _register(
+        SERVICE_RECOMPUTE_LOAD_CONTROL,
+        async_handle_recompute_load_control,
+        vol.Schema({vol.Optional(ATTR_ENTRY_ID): str}),
+    )
+
+    _register(
+        SERVICE_EMERGENCY_SAFE_MODE,
+        async_handle_emergency_safe_mode,
+        vol.Schema({vol.Optional(ATTR_ENTRY_ID): str}),
+    )
 
     _register(
         SERVICE_START_CHARGING,

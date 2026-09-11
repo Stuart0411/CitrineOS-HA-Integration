@@ -34,10 +34,12 @@ from .const import (
     DEFAULT_DEFAULT_EVSE_ID,
     DEFAULT_DEFAULT_ID_TAG,
     DOMAIN,
+    MODE_EMERGENCY_SAFE,
     SERVICE_START_CHARGING,
     SERVICE_STOP_CHARGING,
 )
 from .coordinator import CitrineCoordinator
+from .load_controller import CitrineLoadController
 from .profile_controls import async_push_profile_update
 
 _LOGGER = logging.getLogger(__name__)
@@ -52,6 +54,7 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: CitrineCoordinator = data["coordinator"]
     client: CitrineClient = data["client"]
+    controller: CitrineLoadController = data["controller"]
 
     known_ids: set[str] = set()
 
@@ -73,6 +76,12 @@ async def async_setup_entry(
         return entities
 
     async_add_entities(_build_entities())
+    async_add_entities(
+        [
+            CitrineRecomputeButton(controller, entry),
+            CitrineEmergencySafeButton(controller, entry),
+        ]
+    )
 
     def _async_handle_update() -> None:
         new_entities = _build_entities()
@@ -588,3 +597,53 @@ class CitrineStopDynamicSessionButton(CitrineProfileControlButtonBase):
 def capabilities_default_kind(coordinator: CitrineCoordinator, station_id: str) -> str:
     capabilities = coordinator.get_station_capabilities(station_id)
     return str(capabilities.get("default_profile_kind", "Absolute"))
+
+
+def _site_device_info(entry: ConfigEntry) -> DeviceInfo:
+    tenant = entry.data.get(CONF_TENANT_ID, 1)
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"{tenant}:site_controller")},
+        name="Citrine Energy Controller Hub",
+        manufacturer="CitrineOS",
+        model="Local Load Controller",
+        sw_version="0.2.0",
+    )
+
+
+class CitrineRecomputeButton(ButtonEntity):
+    """Trigger an immediate load controller cycle."""
+
+    _attr_icon = "mdi:refresh-auto"
+
+    def __init__(self, controller: CitrineLoadController, entry: ConfigEntry) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_recompute_load_control"
+        self._attr_name = "Citrine Recompute Load Control"
+
+    async def async_press(self) -> None:
+        await self._controller.async_recompute()
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _site_device_info(self._entry)
+
+
+class CitrineEmergencySafeButton(ButtonEntity):
+    """Force controller into emergency safe mode (zero / minimal charging)."""
+
+    _attr_icon = "mdi:alert-octagon"
+
+    def __init__(self, controller: CitrineLoadController, entry: ConfigEntry) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_emergency_safe_mode"
+        self._attr_name = "Citrine Emergency Safe Mode"
+
+    async def async_press(self) -> None:
+        self._controller.set_mode(MODE_EMERGENCY_SAFE)
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _site_device_info(self._entry)
+

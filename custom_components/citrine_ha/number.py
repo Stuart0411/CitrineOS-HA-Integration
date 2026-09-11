@@ -6,14 +6,13 @@ from typing import Any
 
 from homeassistant.components.number import NumberEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfPower
+from homeassistant.const import UnitOfElectricCurrent, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .citrine_api import CitrineApiError, CitrineClient
-from .const import CONF_TENANT_ID, DOMAIN
 from .const import (
     ATTR_DURATION,
     ATTR_ENTRY_ID,
@@ -22,13 +21,24 @@ from .const import (
     ATTR_PROTOCOL,
     ATTR_STATION_ID,
     ATTR_UNIT,
-    DEFAULT_PROFILE_DURATION,
+    CONF_MAIN_FUSE_LIMIT_W,
+    CONF_MIN_CHARGE_CURRENT_A,
+    CONF_RAMP_RATE_W_S,
+    CONF_SOLAR_START_BUFFER_W,
+    CONF_TENANT_ID,
+    DEFAULT_MAIN_FUSE_LIMIT_W,
+    DEFAULT_MIN_CHARGE_CURRENT_A,
     DEFAULT_PROFILE_DISCHARGE_LIMIT,
+    DEFAULT_PROFILE_DURATION,
     DEFAULT_PROFILE_LIMIT,
     DEFAULT_PROFILE_SETPOINT,
+    DEFAULT_RAMP_RATE_W_S,
+    DEFAULT_SOLAR_START_BUFFER_W,
+    DOMAIN,
     SERVICE_SET_STATION_LIMIT,
 )
 from .coordinator import CitrineCoordinator
+from .load_controller import CitrineLoadController
 from .profile_controls import async_push_profile_update
 
 
@@ -41,11 +51,12 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: CitrineCoordinator = data["coordinator"]
     client: CitrineClient = data["client"]
+    controller: CitrineLoadController = data["controller"]
 
     known_ids: set[str] = set()
 
-    def _build_entities() -> list[CitrineStationLimitNumber]:
-        entities: list[CitrineStationLimitNumber] = []
+    def _build_entities() -> list[NumberEntity]:
+        entities: list[NumberEntity] = []
         for station in coordinator.data.get("stations", []):
             station_id = station.get("id")
             if not station_id or station_id in known_ids:
@@ -66,6 +77,14 @@ async def async_setup_entry(
         return entities
 
     async_add_entities(_build_entities())
+    async_add_entities(
+        [
+            CitrineMainFuseLimitNumber(controller, entry),
+            CitrineSolarBufferNumber(controller, entry),
+            CitrineMinChargeCurrentNumber(controller, entry),
+            CitrineRampRateNumber(controller, entry),
+        ]
+    )
 
     def _async_handle_update() -> None:
         new_entities = _build_entities()
@@ -471,3 +490,152 @@ class CitrineStationProfileIdNumber(CitrineProfilePreferenceNumber):
             profile_id=None if int(value) == 0 else int(value),
         )
         self.async_write_ha_state()
+
+
+def _site_device_info(entry: ConfigEntry) -> DeviceInfo:
+    tenant = entry.data.get(CONF_TENANT_ID, 1)
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"{tenant}:site_controller")},
+        name="Citrine Energy Controller Hub",
+        manufacturer="CitrineOS",
+        model="Local Load Controller",
+        sw_version="0.2.0",
+    )
+
+
+class CitrineMainFuseLimitNumber(NumberEntity):
+    """Main grid fuse import safety limit."""
+
+    _attr_icon = "mdi:fuse-blade"
+    _attr_native_min_value = 1000.0
+    _attr_native_max_value = 250000.0
+    _attr_native_step = 500.0
+    _attr_mode = "box"
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+
+    def __init__(self, controller: CitrineLoadController, entry: ConfigEntry) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_main_fuse_limit"
+        self._attr_name = "Citrine Main Fuse Limit"
+
+    @property
+    def native_value(self) -> float:
+        return float(
+            self._entry.options.get(CONF_MAIN_FUSE_LIMIT_W)
+            or self._entry.data.get(CONF_MAIN_FUSE_LIMIT_W, DEFAULT_MAIN_FUSE_LIMIT_W)
+        )
+
+    async def async_set_native_value(self, value: float) -> None:
+        new_opts = dict(self._entry.options)
+        new_opts[CONF_MAIN_FUSE_LIMIT_W] = float(value)
+        self.hass.config_entries.async_update_entry(self._entry, options=new_opts)
+        await self._controller.async_recompute()
+        self.async_write_ha_state()
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _site_device_info(self._entry)
+
+
+class CitrineSolarBufferNumber(NumberEntity):
+    """Surplus margin required before starting or increasing EV charge."""
+
+    _attr_icon = "mdi:solar-power"
+    _attr_native_min_value = 0.0
+    _attr_native_max_value = 5000.0
+    _attr_native_step = 50.0
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+
+    def __init__(self, controller: CitrineLoadController, entry: ConfigEntry) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_solar_start_buffer"
+        self._attr_name = "Citrine Solar Start Buffer"
+
+    @property
+    def native_value(self) -> float:
+        return float(
+            self._entry.options.get(CONF_SOLAR_START_BUFFER_W)
+            or self._entry.data.get(CONF_SOLAR_START_BUFFER_W, DEFAULT_SOLAR_START_BUFFER_W)
+        )
+
+    async def async_set_native_value(self, value: float) -> None:
+        new_opts = dict(self._entry.options)
+        new_opts[CONF_SOLAR_START_BUFFER_W] = float(value)
+        self.hass.config_entries.async_update_entry(self._entry, options=new_opts)
+        await self._controller.async_recompute()
+        self.async_write_ha_state()
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _site_device_info(self._entry)
+
+
+class CitrineMinChargeCurrentNumber(NumberEntity):
+    """Minimum pilot current floor (typically 6A per phase)."""
+
+    _attr_icon = "mdi:current-ac"
+    _attr_native_min_value = 6.0
+    _attr_native_max_value = 16.0
+    _attr_native_step = 1.0
+    _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
+
+    def __init__(self, controller: CitrineLoadController, entry: ConfigEntry) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_min_charge_current"
+        self._attr_name = "Citrine Min Charge Current"
+
+    @property
+    def native_value(self) -> float:
+        return float(
+            self._entry.options.get(CONF_MIN_CHARGE_CURRENT_A)
+            or self._entry.data.get(CONF_MIN_CHARGE_CURRENT_A, DEFAULT_MIN_CHARGE_CURRENT_A)
+        )
+
+    async def async_set_native_value(self, value: float) -> None:
+        new_opts = dict(self._entry.options)
+        new_opts[CONF_MIN_CHARGE_CURRENT_A] = float(value)
+        self.hass.config_entries.async_update_entry(self._entry, options=new_opts)
+        await self._controller.async_recompute()
+        self.async_write_ha_state()
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _site_device_info(self._entry)
+
+
+class CitrineRampRateNumber(NumberEntity):
+    """Maximum power slew rate in Watts per second."""
+
+    _attr_icon = "mdi:arrow-top-right-bottom-left"
+    _attr_native_min_value = 50.0
+    _attr_native_max_value = 10000.0
+    _attr_native_step = 50.0
+    _attr_native_unit_of_measurement = "W/s"
+
+    def __init__(self, controller: CitrineLoadController, entry: ConfigEntry) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_ramp_rate"
+        self._attr_name = "Citrine Max Ramp Rate"
+
+    @property
+    def native_value(self) -> float:
+        return float(
+            self._entry.options.get(CONF_RAMP_RATE_W_S)
+            or self._entry.data.get(CONF_RAMP_RATE_W_S, DEFAULT_RAMP_RATE_W_S)
+        )
+
+    async def async_set_native_value(self, value: float) -> None:
+        new_opts = dict(self._entry.options)
+        new_opts[CONF_RAMP_RATE_W_S] = float(value)
+        self.hass.config_entries.async_update_entry(self._entry, options=new_opts)
+        await self._controller.async_recompute()
+        self.async_write_ha_state()
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _site_device_info(self._entry)
+
