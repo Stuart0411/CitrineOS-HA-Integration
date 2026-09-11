@@ -301,35 +301,6 @@ class CitrineConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
         return vol.Schema(schema)
-                mode=selector.SelectSelectorMode.DROPDOWN,
-            )
-        )
-
-        schema[vol.Optional(
-            CONF_MAIN_FUSE_LIMIT_W,
-            default=float(values.get(CONF_MAIN_FUSE_LIMIT_W, DEFAULT_MAIN_FUSE_LIMIT_W)),
-        )] = selector.NumberSelector(
-            selector.NumberSelectorConfig(min=1000, max=250000, step=100, mode=selector.NumberSelectorMode.BOX)
-        )
-
-        schema[vol.Optional(
-            CONF_SOLAR_START_BUFFER_W,
-            default=float(values.get(CONF_SOLAR_START_BUFFER_W, DEFAULT_SOLAR_START_BUFFER_W)),
-        )] = selector.NumberSelector(
-            selector.NumberSelectorConfig(min=0, max=5000, step=50, mode=selector.NumberSelectorMode.BOX)
-        )
-
-        schema[vol.Optional(
-            CONF_SITE_PHASES,
-            default=str(values.get(CONF_SITE_PHASES, DEFAULT_SITE_PHASES)),
-        )] = selector.SelectSelector(
-            selector.SelectSelectorConfig(
-                options=["1", "3"],
-                mode=selector.SelectSelectorMode.DROPDOWN,
-            )
-        )
-
-        return vol.Schema(schema)
 
     async def _async_validate(self, data: dict[str, Any]) -> None:
         verify_ssl = bool(data.get(CONF_VERIFY_SSL, True))
