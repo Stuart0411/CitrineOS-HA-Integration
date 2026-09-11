@@ -1,0 +1,80 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to CitrineOS",
+        "description": "Configure your CitrineOS server connection and credentials.",
+        "data": {
+          "name": "Integration Name",
+          "base_url": "CitrineOS Base URL (e.g. http://localhost:8080)",
+          "tenant_id": "Tenant ID",
+          "auth_token": "Bearer Token (optional)",
+          "verify_ssl": "Verify TLS Certificate",
+          "request_timeout": "Request Timeout (seconds)",
+          "hasura_url": "Hasura GraphQL URL (optional)",
+          "hasura_token": "Hasura Token (optional)",
+          "scan_interval": "Charger Discovery Interval (seconds)",
+          "default_id_tag": "Default RFID / Start Tag",
+          "default_evse_id": "Default EVSE ID"
+        }
+      },
+      "load_control": {
+        "title": "Local Energy & Load Controller",
+        "description": "Configure telemetry sensors and site power limits for intelligent solar surplus tracking, 3-phase balancing, and grid protection.",
+        "data": {
+          "grid_power_sensor": "Grid Power Sensor (+ import / - export in Watts)",
+          "grid_phase_a_current_sensor": "Grid Phase A / L1 Current Sensor (Amps, optional)",
+          "grid_phase_b_current_sensor": "Grid Phase B / L2 Current Sensor (Amps, optional)",
+          "grid_phase_c_current_sensor": "Grid Phase C / L3 Current Sensor (Amps, optional)",
+          "solar_power_sensor": "Solar Power Generation Sensor (Watts)",
+          "battery_power_sensor": "Home Battery Power Sensor (+ discharge / - charge in Watts)",
+          "battery_soc_sensor": "Home Battery State of Charge Sensor (%)",
+          "doe_import_limit_sensor": "CSIP-Aus / DOE Dynamic Import Limit Sensor (Watts, optional)",
+          "doe_export_limit_sensor": "CSIP-Aus / DOE Dynamic Export Limit Sensor (Watts, optional)",
+          "controller_mode": "Initial Control Mode",
+          "main_fuse_limit_w": "Main Grid Fuse Import Safety Limit (Watts)",
+          "solar_start_buffer_w": "Solar Surplus Buffer (Watts)",
+          "site_phases": "Site Electrical Supply (1-Phase or 3-Phase)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to CitrineOS server. Please check the URL and network reachability.",
+      "invalid_auth": "Authentication failed. Please verify your bearer or Hasura token."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "CitrineOS & Energy Controller Settings",
+        "description": "Tune real-time load management, sensors, 3-phase balancing, safety limits, and charger polling.",
+        "data": {
+          "grid_power_sensor": "Grid Power Sensor (+ import / - export in Watts)",
+          "grid_phase_a_current_sensor": "Grid Phase A / L1 Current Sensor (Amps)",
+          "grid_phase_b_current_sensor": "Grid Phase B / L2 Current Sensor (Amps)",
+          "grid_phase_c_current_sensor": "Grid Phase C / L3 Current Sensor (Amps)",
+          "solar_power_sensor": "Solar Power Generation Sensor (Watts)",
+          "battery_power_sensor": "Home Battery Power Sensor (+ discharge / - charge in Watts)",
+          "battery_soc_sensor": "Home Battery State of Charge Sensor (%)",
+          "doe_import_limit_sensor": "CSIP-Aus / DOE Dynamic Import Limit Sensor (Watts)",
+          "doe_export_limit_sensor": "CSIP-Aus / DOE Dynamic Export Limit Sensor (Watts)",
+          "controller_mode": "Active Control Mode",
+          "main_fuse_limit_w": "Main Grid Fuse Limit (Watts)",
+          "main_fuse_current_a": "Main Grid Fuse Current Per-Phase (Amps)",
+          "max_phase_unbalance_a": "Maximum Allowed Phase-to-Phase Unbalance (Amps)",
+          "solar_start_buffer_w": "Solar Surplus Buffer (Watts)",
+          "min_charge_current_a": "Minimum EV Charging Current Floor (Amps per phase)",
+          "ramp_rate_w_s": "Maximum Power Ramp Slew Rate (W/s)",
+          "controller_interval_secs": "Controller Refresh Loop Interval (seconds)",
+          "deadband_w": "Power Update Deadband (Watts)",
+          "min_dwell_secs": "Minimum State Dwell Time (seconds)",
+          "site_id": "Site Identifier (for EMS MQTT topics & telemetry)",
+          "mqtt_topic_prefix": "MQTT Intent Topic Prefix (e.g. citrine/ems)",
+          "scan_interval": "Discovery Scan Interval (seconds)",
+          "default_id_tag": "Default ID Tag",
+          "default_evse_id": "Default EVSE ID"
+        }
+      }
+    }
+  }
+}
