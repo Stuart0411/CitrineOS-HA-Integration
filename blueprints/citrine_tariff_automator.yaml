@@ -1,0 +1,83 @@
+blueprint:
+  name: CitrineOS Dynamic Price & Tariff Mode Switcher
+  description: Automatically switch CitrineOS Energy Controller modes based on spot electricity price or solar forecast.
+  domain: automation
+  input:
+    electricity_price_sensor:
+      name: Spot Electricity Price Sensor
+      description: Sensor providing dynamic grid price (e.g. Amber Electric, Nord Pool, Tibber).
+      selector:
+        entity:
+          domain: sensor
+    cheap_price_threshold:
+      name: Cheap Price Threshold
+      description: When price falls below this value, enable Grid Capped (Fast) mode.
+      default: 0.15
+      selector:
+        number:
+          min: -1.0
+          max: 2.0
+          step: 0.01
+          unit_of_measurement: "$/kWh"
+    negative_price_threshold:
+      name: Negative / FiT Curtailment Threshold
+      description: When price is negative, enable Solar + Battery or Emergency Safe mode.
+      default: 0.0
+      selector:
+        number:
+          min: -1.0
+          max: 1.0
+          step: 0.01
+          unit_of_measurement: "$/kWh"
+    citrine_mode_select:
+      name: Citrine Controller Mode Select
+      default: select.citrine_controller_mode
+      selector:
+        entity:
+          domain: select
+
+trigger:
+  - platform: state
+    entity_id: !input electricity_price_sensor
+
+condition: []
+
+action:
+  - choose:
+      # Scenario A: Negative or free electricity -> maximize EV import
+      - conditions:
+          - condition: numeric_state
+            entity_id: !input electricity_price_sensor
+            below: !input negative_price_threshold
+        sequence:
+          - service: select.select_option
+            target:
+              entity_id: !input citrine_mode_select
+            data:
+              option: "Grid Capped (Fast)"
+
+      # Scenario B: Low price -> Grid Capped
+      - conditions:
+          - condition: numeric_state
+            entity_id: !input electricity_price_sensor
+            below: !input cheap_price_threshold
+        sequence:
+          - service: select.select_option
+            target:
+              entity_id: !input citrine_mode_select
+            data:
+              option: "Grid Capped (Fast)"
+
+      # Scenario C: Peak price -> strictly solar surplus
+      - conditions:
+          - condition: numeric_state
+            entity_id: !input electricity_price_sensor
+            above: !input cheap_price_threshold
+        sequence:
+          - service: select.select_option
+            target:
+              entity_id: !input citrine_mode_select
+            data:
+              option: "Solar Only"
+
+mode: restart

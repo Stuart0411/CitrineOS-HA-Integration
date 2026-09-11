@@ -56,6 +56,8 @@
           "controller_interval_secs": "Controller Refresh Loop Interval (seconds)",
           "deadband_w": "Power Update Deadband (Watts)",
           "min_dwell_secs": "Minimum State Dwell Time (seconds)",
+          "site_id": "Site Identifier (for EMS MQTT topics & telemetry)",
+          "mqtt_topic_prefix": "MQTT Intent Topic Prefix (e.g. citrine/ems)",
           "scan_interval": "Discovery Scan Interval (seconds)",
           "default_id_tag": "Default ID Tag",
           "default_evse_id": "Default EVSE ID"

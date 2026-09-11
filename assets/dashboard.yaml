@@ -1,0 +1,121 @@
+# CitrineOS Energy Controller - Lovelace Dashboard View
+# Copy this view configuration into your Home Assistant Lovelace Dashboard (Raw Configuration Editor or as a New View)
+
+title: CitrineOS Energy
+path: citrine-energy
+icon: mdi:ev-station
+badges:
+  - entity: sensor.citrine_controller_state
+  - entity: sensor.citrine_active_ev_count
+  - entity: sensor.citrine_mqtt_intent_status
+
+cards:
+  - type: vertical-stack
+    title: Site Energy Governor & Load Control
+    cards:
+      - type: grid
+        columns: 3
+        square: false
+        cards:
+          - type: gauge
+            entity: sensor.citrine_allocated_ev_power
+            name: Allocated EV Power
+            unit: W
+            min: 0
+            max: 22000
+            severity:
+              green: 1380
+              yellow: 7400
+              red: 18000
+
+          - type: gauge
+            entity: sensor.citrine_solar_surplus_power
+            name: Solar Surplus
+            unit: W
+            min: 0
+            max: 10000
+            severity:
+              green: 3000
+              yellow: 1400
+              red: 0
+
+          - type: gauge
+            entity: sensor.citrine_site_headroom_power
+            name: Grid Fuse Headroom
+            unit: W
+            min: 0
+            max: 25000
+            severity:
+              green: 5000
+              yellow: 2000
+              red: 0
+
+      - type: entities
+        title: Operating Mode & Controller Settings
+        show_header_toggle: false
+        entities:
+          - entity: select.citrine_controller_mode
+            name: Active Operating Mode
+          - entity: number.citrine_main_fuse_limit
+            name: Main Grid Fuse Limit (W)
+          - entity: number.citrine_solar_start_buffer
+            name: Solar Surplus Start Buffer (W)
+          - entity: number.citrine_min_charge_current
+            name: Minimum Charge Current Floor (A)
+          - entity: number.citrine_max_ramp_rate
+            name: Power Ramp Slew Rate (W/s)
+
+      - type: horizontal-stack
+        cards:
+          - type: button
+            name: Recompute Now
+            icon: mdi:refresh-auto
+            tap_action:
+              action: call-service
+              service: citrine_ha.recompute_load_control
+          - type: button
+            name: Emergency Safe Mode
+            icon: mdi:alert-octagon
+            tap_action:
+              action: call-service
+              service: citrine_ha.emergency_safe_mode
+
+  - type: vertical-stack
+    title: Discovered Charging Stations
+    cards:
+      - type: custom:auto-entities
+        card:
+          type: entities
+          title: Connected EVSEs
+        filter:
+          include:
+            - domain: sensor
+              attributes:
+                device_class: null
+              entity_id: "*_session*"
+            - domain: select
+              entity_id: "*_override_mode"
+            - domain: select
+              entity_id: "*_priority_select"
+        card_param: entities
+        fallback_card:
+          type: markdown
+          content: >
+            *No charging stations actively discovered or connected.*
+            Ensure CitrineOS is running and your charger is connected via OCPP.
+
+  - type: vertical-stack
+    title: CitrineOS & EMS Telemetry Health
+    cards:
+      - type: entities
+        entities:
+          - entity: sensor.citrine_ems_telemetry_health
+            name: Citrine Data API Health
+          - entity: sensor.citrine_mqtt_intent_status
+            name: Real-Time MQTT Intent Stream
+          - entity: sensor.citrine_ems_intake_accepted
+            name: Accepted Intake Envelopes
+          - entity: sensor.citrine_ems_intake_rejected
+            name: Rejected Intake Envelopes
+          - entity: sensor.citrine_ems_telemetry_freshness
+            name: Telemetry Freshness (s)

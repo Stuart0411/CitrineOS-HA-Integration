@@ -60,6 +60,7 @@ async def async_setup_entry(
             CitrineSiteHeadroomPowerSensor(controller, entry),
             CitrineSolarSurplusPowerSensor(controller, entry),
             CitrineActiveEvCountSensor(controller, entry),
+            CitrineMqttIntentStatusSensor(controller, entry),
             # Telemetry Intake Sensors
             CitrineEmsIntakeAcceptedSensor(coordinator, entry),
             CitrineEmsIntakeRejectedSensor(coordinator, entry),
@@ -822,4 +823,42 @@ class CitrineActiveEvCountSensor(SensorEntity):
     @property
     def device_info(self) -> DeviceInfo:
         return _site_device_info(self._entry)
+
+
+class CitrineMqttIntentStatusSensor(SensorEntity):
+    """Diagnostic sensor for real-time MQTT intent bus publishing status."""
+
+    _attr_icon = "mdi:transit-connection-variant"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, controller: CitrineLoadController, entry: ConfigEntry) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_mqtt_intent_status"
+        self._attr_name = "Citrine MQTT Intent Status"
+
+    @property
+    def native_value(self) -> str:
+        pub = self._controller.mqtt_publisher
+        if not pub.is_mqtt_available():
+            return "unavailable"
+        return "streaming" if pub.last_publish_success else "error"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        pub = self._controller.mqtt_publisher
+        return {
+            "intent_topic": pub.intent_topic,
+            "site_id": pub.site_id,
+            "ttl_seconds": pub.ttl_seconds,
+            "publish_count": pub.publish_count,
+            "last_published_at": pub.last_published_at,
+            "last_publish_success": pub.last_publish_success,
+            "last_error": pub.last_error,
+        }
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _site_device_info(self._entry)
+
 

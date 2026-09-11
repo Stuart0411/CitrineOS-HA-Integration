@@ -25,6 +25,7 @@ from .const import (
     CONF_MAIN_FUSE_LIMIT_W,
     CONF_MIN_CHARGE_CURRENT_A,
     CONF_MIN_DWELL_SECS,
+    CONF_MQTT_TOPIC_PREFIX,
     CONF_NOMINAL_VOLTAGE,
     CONF_RAMP_RATE_W_S,
     CONF_SITE_EXPORT_LIMIT_W,
@@ -39,6 +40,7 @@ from .const import (
     DEFAULT_MAIN_FUSE_LIMIT_W,
     DEFAULT_MIN_CHARGE_CURRENT_A,
     DEFAULT_MIN_DWELL_SECS,
+    DEFAULT_MQTT_TOPIC_PREFIX,
     DEFAULT_NOMINAL_VOLTAGE,
     DEFAULT_RAMP_RATE_W_S,
     DEFAULT_SITE_EXPORT_LIMIT_W,
@@ -53,6 +55,7 @@ from .const import (
     MODE_SOLAR_ONLY,
 )
 from .coordinator import CitrineCoordinator
+from .mqtt_intent import MqttIntentPublisher
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,6 +74,21 @@ class CitrineLoadController:
         self.entry = entry
         self.coordinator = coordinator
         self.client = client
+
+        site_id = str(
+            entry.options.get(CONF_SITE_ID)
+            or entry.data.get(CONF_SITE_ID, DEFAULT_SITE_ID)
+        )
+        topic_prefix = str(
+            entry.options.get(CONF_MQTT_TOPIC_PREFIX)
+            or entry.data.get(CONF_MQTT_TOPIC_PREFIX, DEFAULT_MQTT_TOPIC_PREFIX)
+        )
+        self.mqtt_publisher = MqttIntentPublisher(
+            hass,
+            site_id=site_id,
+            topic_prefix=topic_prefix,
+            ttl_seconds=60,
+        )
 
         # Dynamic State Variables
         self.mode = str(entry.options.get(CONF_CONTROLLER_MODE) or entry.data.get(CONF_CONTROLLER_MODE) or DEFAULT_CONTROLLER_MODE)
@@ -309,6 +327,33 @@ class CitrineLoadController:
         # Calculate per-station target allocations
         allocations = calculate_station_allocations(total_budget_w, station_contexts)
         self.allocated_ev_power_w = sum(allocations.values())
+
+        # Publish structured real-time envelope to CitrineOS MQTT intent bus
+        allocation_payloads = [
+            {
+                "stationId": st_ctx.station_id,
+                "evseId": st_ctx.evse_id,
+                "protocol": st_ctx.protocol,
+                "chargeLimitW": round(allocations.get(st_ctx.station_id, 0.0), 1),
+                "dischargeLimitW": 0.0,
+                "priority": st_ctx.priority,
+                "phases": st_ctx.phases,
+                "overrideMode": st_ctx.override_mode,
+                "unit": "W",
+            }
+            for st_ctx in station_contexts
+        ]
+        await self.mqtt_publisher.async_publish_intent(
+            operation_mode=self.mode,
+            reason=self.state_status,
+            max_import_power_w=main_fuse_w,
+            max_export_power_w=export_limit_w,
+            allocated_ev_power_w=self.allocated_ev_power_w,
+            solar_surplus_w=self.solar_surplus_w,
+            site_headroom_w=self.site_headroom_w,
+            allocations=allocation_payloads,
+            fallback_limit_w=min_current_a * voltage * phases,
+        )
 
         # Apply limits with deadbands, dwell time protection, and rate limiting
         for st_ctx in station_contexts:

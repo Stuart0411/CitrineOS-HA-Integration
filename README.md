@@ -73,6 +73,21 @@ Selectable on the fly via `select.citrine_controller_mode`:
 * `citrine_ha.set_station_limit` / `citrine_ha.set_group_limit` — Set static limits.
 * `citrine_ha.set_charging_profile` / `citrine_ha.clear_charging_profile` — Advanced OCPP profile dispatch.
 
+---
+
+## Lovelace Dashboard & Automation Blueprints
+
+### Turnkey Dashboard Card
+A pre-configured Lovelace dashboard view is available in [assets/dashboard.yaml](assets/dashboard.yaml) featuring:
+- **Real-Time Gauges**: Allocated EV Power, Available Solar Surplus, and Grid Fuse Headroom.
+- **Operating Mode Switcher & Sliders**: Switch between `Solar Only`, `Solar + Battery`, and `Grid Capped` modes on the fly.
+- **Action Buttons**: Instant Recompute and Emergency Safe Mode triggers.
+- **Health Indicators**: Real-time MQTT stream status and CitrineOS API telemetry freshness.
+
+### Automation Blueprints
+- **Dynamic Tariff Mode Switcher**: [blueprints/citrine_tariff_automator.yaml](blueprints/citrine_tariff_automator.yaml) automatically toggles between `Grid Capped (Fast)` during cheap/negative spot price windows (e.g. Amber Electric, Nord Pool, Tibber) and `Solar Only` during peak price hours.
+
+
 
 ## Implemented capabilities
 

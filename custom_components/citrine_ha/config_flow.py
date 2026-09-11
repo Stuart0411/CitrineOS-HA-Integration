@@ -279,6 +279,15 @@ class CitrineOptionsFlow(config_entries.OptionsFlow):
                         CONF_MIN_DWELL_SECS,
                         default=options.get(CONF_MIN_DWELL_SECS, data.get(CONF_MIN_DWELL_SECS, DEFAULT_MIN_DWELL_SECS)),
                     ): vol.All(vol.Coerce(int), vol.Range(min=5, max=600)),
+                    # MQTT Intent Bus
+                    vol.Optional(
+                        CONF_SITE_ID,
+                        default=options.get(CONF_SITE_ID, data.get(CONF_SITE_ID, DEFAULT_SITE_ID)),
+                    ): str,
+                    vol.Optional(
+                        CONF_MQTT_TOPIC_PREFIX,
+                        default=options.get(CONF_MQTT_TOPIC_PREFIX, data.get(CONF_MQTT_TOPIC_PREFIX, DEFAULT_MQTT_TOPIC_PREFIX)),
+                    ): str,
                     # Connection & Discovery Settings
                     vol.Optional(
                         CONF_SCAN_INTERVAL,
