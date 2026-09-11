@@ -68,6 +68,7 @@ def mock_controller_env():
         ]
     }
     coordinator.get_station_protocol.return_value = "ocpp2.0.1"
+    coordinator.get_station_capabilities.return_value = {}
 
     client.set_station_limit = AsyncMock()
     hass.services.has_service.return_value = False  # Test REST dispatch path
