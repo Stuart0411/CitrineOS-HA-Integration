@@ -269,143 +269,177 @@ class CitrineOptionsFlow(config_entries.OptionsFlow):
         options = dict(self._config_entry.options)
         data = dict(self._config_entry.data)
 
+        def _get_val(key: str, default: Any = None) -> Any:
+            return options.get(key, data.get(key, default))
+
+        def _num_val(key: str, default: float) -> float:
+            raw = _get_val(key, default)
+            try:
+                return float(raw) if raw is not None else default
+            except (ValueError, TypeError):
+                return default
+
+        schema_dict: dict[Any, Any] = {}
+
+        # Entity Selectors
+        for ent_key in (
+            CONF_GRID_POWER_SENSOR,
+            CONF_GRID_PHASE_A_CURRENT_SENSOR,
+            CONF_GRID_PHASE_B_CURRENT_SENSOR,
+            CONF_GRID_PHASE_C_CURRENT_SENSOR,
+            CONF_SOLAR_POWER_SENSOR,
+            CONF_BATTERY_POWER_SENSOR,
+            CONF_BATTERY_SOC_SENSOR,
+            CONF_DOE_IMPORT_LIMIT_SENSOR,
+            CONF_DOE_EXPORT_LIMIT_SENSOR,
+        ):
+            val = _get_val(ent_key)
+            if val is not None and str(val).strip():
+                schema_dict[
+                    vol.Optional(ent_key, description={"suggested_value": str(val)})
+                ] = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
+            else:
+                schema_dict[
+                    vol.Optional(ent_key)
+                ] = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
+
+        # Mode Selector
+        schema_dict[
+            vol.Optional(
+                CONF_CONTROLLER_MODE,
+                default=str(_get_val(CONF_CONTROLLER_MODE, DEFAULT_CONTROLLER_MODE)),
+            )
+        ] = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=CONTROLLER_MODES,
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        )
+
+        # Numeric Limit Selectors
+        schema_dict[
+            vol.Optional(
+                CONF_MAIN_FUSE_LIMIT_W,
+                default=_num_val(CONF_MAIN_FUSE_LIMIT_W, DEFAULT_MAIN_FUSE_LIMIT_W),
+            )
+        ] = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=1000, max=250000, step=100, mode=selector.NumberSelectorMode.BOX)
+        )
+
+        schema_dict[
+            vol.Optional(
+                CONF_MAIN_FUSE_CURRENT_A,
+                default=_num_val(CONF_MAIN_FUSE_CURRENT_A, DEFAULT_MAIN_FUSE_CURRENT_A),
+            )
+        ] = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=10, max=500, step=1, mode=selector.NumberSelectorMode.BOX)
+        )
+
+        schema_dict[
+            vol.Optional(
+                CONF_MAX_PHASE_UNBALANCE_A,
+                default=_num_val(CONF_MAX_PHASE_UNBALANCE_A, DEFAULT_MAX_PHASE_UNBALANCE_A),
+            )
+        ] = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=0, max=100, step=1, mode=selector.NumberSelectorMode.BOX)
+        )
+
+        schema_dict[
+            vol.Optional(
+                CONF_SOLAR_START_BUFFER_W,
+                default=_num_val(CONF_SOLAR_START_BUFFER_W, DEFAULT_SOLAR_START_BUFFER_W),
+            )
+        ] = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=0, max=5000, step=50, mode=selector.NumberSelectorMode.BOX)
+        )
+
+        schema_dict[
+            vol.Optional(
+                CONF_MIN_CHARGE_CURRENT_A,
+                default=_num_val(CONF_MIN_CHARGE_CURRENT_A, DEFAULT_MIN_CHARGE_CURRENT_A),
+            )
+        ] = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=6, max=16, step=1, mode=selector.NumberSelectorMode.BOX)
+        )
+
+        schema_dict[
+            vol.Optional(
+                CONF_RAMP_RATE_W_S,
+                default=_num_val(CONF_RAMP_RATE_W_S, DEFAULT_RAMP_RATE_W_S),
+            )
+        ] = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=50, max=10000, step=50, mode=selector.NumberSelectorMode.BOX)
+        )
+
+        schema_dict[
+            vol.Optional(
+                CONF_CONTROLLER_INTERVAL_SECS,
+                default=_num_val(CONF_CONTROLLER_INTERVAL_SECS, DEFAULT_CONTROLLER_INTERVAL_SECS),
+            )
+        ] = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=1, max=60, step=1, mode=selector.NumberSelectorMode.BOX)
+        )
+
+        schema_dict[
+            vol.Optional(
+                CONF_DEADBAND_W,
+                default=_num_val(CONF_DEADBAND_W, DEFAULT_DEADBAND_W),
+            )
+        ] = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=0, max=2000, step=50, mode=selector.NumberSelectorMode.BOX)
+        )
+
+        schema_dict[
+            vol.Optional(
+                CONF_MIN_DWELL_SECS,
+                default=_num_val(CONF_MIN_DWELL_SECS, DEFAULT_MIN_DWELL_SECS),
+            )
+        ] = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=5, max=600, step=5, mode=selector.NumberSelectorMode.BOX)
+        )
+
+        # Text & Discovery Selectors
+        schema_dict[
+            vol.Optional(
+                CONF_SITE_ID,
+                default=str(_get_val(CONF_SITE_ID, DEFAULT_SITE_ID)),
+            )
+        ] = selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT))
+
+        schema_dict[
+            vol.Optional(
+                CONF_MQTT_TOPIC_PREFIX,
+                default=str(_get_val(CONF_MQTT_TOPIC_PREFIX, DEFAULT_MQTT_TOPIC_PREFIX)),
+            )
+        ] = selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT))
+
+        schema_dict[
+            vol.Optional(
+                CONF_SCAN_INTERVAL,
+                default=_num_val(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+            )
+        ] = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=5, max=3600, step=5, mode=selector.NumberSelectorMode.BOX)
+        )
+
+        schema_dict[
+            vol.Optional(
+                CONF_DEFAULT_ID_TAG,
+                default=str(_get_val(CONF_DEFAULT_ID_TAG, DEFAULT_DEFAULT_ID_TAG)),
+            )
+        ] = selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT))
+
+        schema_dict[
+            vol.Optional(
+                CONF_DEFAULT_EVSE_ID,
+                default=_num_val(CONF_DEFAULT_EVSE_ID, DEFAULT_DEFAULT_EVSE_ID),
+            )
+        ] = selector.NumberSelector(
+            selector.NumberSelectorConfig(min=0, max=999, step=1, mode=selector.NumberSelectorMode.BOX)
+        )
+
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    # Load Controller Settings
-                    vol.Optional(
-                        CONF_GRID_POWER_SENSOR,
-                        description={"suggested_value": options.get(CONF_GRID_POWER_SENSOR, data.get(CONF_GRID_POWER_SENSOR))},
-                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
-                    vol.Optional(
-                        CONF_GRID_PHASE_A_CURRENT_SENSOR,
-                        description={"suggested_value": options.get(CONF_GRID_PHASE_A_CURRENT_SENSOR, data.get(CONF_GRID_PHASE_A_CURRENT_SENSOR))},
-                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
-                    vol.Optional(
-                        CONF_GRID_PHASE_B_CURRENT_SENSOR,
-                        description={"suggested_value": options.get(CONF_GRID_PHASE_B_CURRENT_SENSOR, data.get(CONF_GRID_PHASE_B_CURRENT_SENSOR))},
-                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
-                    vol.Optional(
-                        CONF_GRID_PHASE_C_CURRENT_SENSOR,
-                        description={"suggested_value": options.get(CONF_GRID_PHASE_C_CURRENT_SENSOR, data.get(CONF_GRID_PHASE_C_CURRENT_SENSOR))},
-                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
-                    vol.Optional(
-                        CONF_SOLAR_POWER_SENSOR,
-                        description={"suggested_value": options.get(CONF_SOLAR_POWER_SENSOR, data.get(CONF_SOLAR_POWER_SENSOR))},
-                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
-                    vol.Optional(
-                        CONF_BATTERY_POWER_SENSOR,
-                        description={"suggested_value": options.get(CONF_BATTERY_POWER_SENSOR, data.get(CONF_BATTERY_POWER_SENSOR))},
-                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
-                    vol.Optional(
-                        CONF_BATTERY_SOC_SENSOR,
-                        description={"suggested_value": options.get(CONF_BATTERY_SOC_SENSOR, data.get(CONF_BATTERY_SOC_SENSOR))},
-                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
-                    vol.Optional(
-                        CONF_DOE_IMPORT_LIMIT_SENSOR,
-                        description={"suggested_value": options.get(CONF_DOE_IMPORT_LIMIT_SENSOR, data.get(CONF_DOE_IMPORT_LIMIT_SENSOR))},
-                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
-                    vol.Optional(
-                        CONF_DOE_EXPORT_LIMIT_SENSOR,
-                        description={"suggested_value": options.get(CONF_DOE_EXPORT_LIMIT_SENSOR, data.get(CONF_DOE_EXPORT_LIMIT_SENSOR))},
-                    ): selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
-                    vol.Optional(
-                        CONF_CONTROLLER_MODE,
-                        default=options.get(CONF_CONTROLLER_MODE, data.get(CONF_CONTROLLER_MODE, DEFAULT_CONTROLLER_MODE)),
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=CONTROLLER_MODES,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
-                    ),
-                    vol.Optional(
-                        CONF_MAIN_FUSE_LIMIT_W,
-                        default=options.get(CONF_MAIN_FUSE_LIMIT_W, data.get(CONF_MAIN_FUSE_LIMIT_W, DEFAULT_MAIN_FUSE_LIMIT_W)),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(min=1000, max=250000, step=100, mode=selector.NumberSelectorMode.BOX)
-                    ),
-                    vol.Optional(
-                        CONF_MAIN_FUSE_CURRENT_A,
-                        default=options.get(CONF_MAIN_FUSE_CURRENT_A, data.get(CONF_MAIN_FUSE_CURRENT_A, DEFAULT_MAIN_FUSE_CURRENT_A)),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(min=10, max=500, step=1, mode=selector.NumberSelectorMode.BOX)
-                    ),
-                    vol.Optional(
-                        CONF_MAX_PHASE_UNBALANCE_A,
-                        default=options.get(CONF_MAX_PHASE_UNBALANCE_A, data.get(CONF_MAX_PHASE_UNBALANCE_A, DEFAULT_MAX_PHASE_UNBALANCE_A)),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(min=0, max=100, step=1, mode=selector.NumberSelectorMode.BOX)
-                    ),
-                    vol.Optional(
-                        CONF_SOLAR_START_BUFFER_W,
-                        default=options.get(CONF_SOLAR_START_BUFFER_W, data.get(CONF_SOLAR_START_BUFFER_W, DEFAULT_SOLAR_START_BUFFER_W)),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(min=0, max=5000, step=50, mode=selector.NumberSelectorMode.BOX)
-                    ),
-                    vol.Optional(
-                        CONF_MIN_CHARGE_CURRENT_A,
-                        default=options.get(CONF_MIN_CHARGE_CURRENT_A, data.get(CONF_MIN_CHARGE_CURRENT_A, DEFAULT_MIN_CHARGE_CURRENT_A)),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(min=6, max=16, step=1, mode=selector.NumberSelectorMode.BOX)
-                    ),
-                    vol.Optional(
-                        CONF_RAMP_RATE_W_S,
-                        default=options.get(CONF_RAMP_RATE_W_S, data.get(CONF_RAMP_RATE_W_S, DEFAULT_RAMP_RATE_W_S)),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(min=50, max=10000, step=50, mode=selector.NumberSelectorMode.BOX)
-                    ),
-                    vol.Optional(
-                        CONF_CONTROLLER_INTERVAL_SECS,
-                        default=options.get(CONF_CONTROLLER_INTERVAL_SECS, data.get(CONF_CONTROLLER_INTERVAL_SECS, DEFAULT_CONTROLLER_INTERVAL_SECS)),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(min=1, max=60, step=1, mode=selector.NumberSelectorMode.BOX)
-                    ),
-                    vol.Optional(
-                        CONF_DEADBAND_W,
-                        default=options.get(CONF_DEADBAND_W, data.get(CONF_DEADBAND_W, DEFAULT_DEADBAND_W)),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(min=0, max=2000, step=50, mode=selector.NumberSelectorMode.BOX)
-                    ),
-                    vol.Optional(
-                        CONF_MIN_DWELL_SECS,
-                        default=options.get(CONF_MIN_DWELL_SECS, data.get(CONF_MIN_DWELL_SECS, DEFAULT_MIN_DWELL_SECS)),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(min=5, max=600, step=5, mode=selector.NumberSelectorMode.BOX)
-                    ),
-                    # MQTT Intent Bus
-                    vol.Optional(
-                        CONF_SITE_ID,
-                        default=options.get(CONF_SITE_ID, data.get(CONF_SITE_ID, DEFAULT_SITE_ID)),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-                    ),
-                    vol.Optional(
-                        CONF_MQTT_TOPIC_PREFIX,
-                        default=options.get(CONF_MQTT_TOPIC_PREFIX, data.get(CONF_MQTT_TOPIC_PREFIX, DEFAULT_MQTT_TOPIC_PREFIX)),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-                    ),
-                    # Connection & Discovery Settings
-                    vol.Optional(
-                        CONF_SCAN_INTERVAL,
-                        default=options.get(CONF_SCAN_INTERVAL, data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(min=5, max=3600, step=5, mode=selector.NumberSelectorMode.BOX)
-                    ),
-                    vol.Optional(
-                        CONF_DEFAULT_ID_TAG,
-                        default=options.get(CONF_DEFAULT_ID_TAG, data.get(CONF_DEFAULT_ID_TAG, DEFAULT_DEFAULT_ID_TAG)),
-                    ): selector.TextSelector(
-                        selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-                    ),
-                    vol.Optional(
-                        CONF_DEFAULT_EVSE_ID,
-                        default=options.get(CONF_DEFAULT_EVSE_ID, data.get(CONF_DEFAULT_EVSE_ID, DEFAULT_DEFAULT_EVSE_ID)),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(min=0, max=999, step=1, mode=selector.NumberSelectorMode.BOX)
-                    ),
-                }
-            ),
+            data_schema=vol.Schema(schema_dict),
         )
 
