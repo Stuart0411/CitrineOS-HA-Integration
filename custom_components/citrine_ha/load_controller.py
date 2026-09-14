@@ -302,14 +302,32 @@ class CitrineLoadController:
 
         for st in self.coordinator.data.get("stations", []):
             st_id = str(st.get("id"))
-            is_online = bool(st.get("isOnline"))
-            has_tx = bool(
-                st.get("activeTransactionId")
-                or st.get("currentTransactionId")
-                or st.get("transactionId")
+            connectors = st.get("connectors", [])
+            has_tx = self._station_has_active_ev(st)
+            is_online = bool(st.get("isOnline")) or any(
+                bool(connector.get("isOnline"))
+                for connector in connectors
+                if isinstance(connector, dict)
             )
             # Estimate or read live station power
-            st_power = float(st.get("activePowerW", self._last_applied_limits.get(st_id, 0.0) if has_tx else 0.0))
+            live_power = next(
+                (
+                    st.get(field)
+                    for field in (
+                        "activePowerW",
+                        "currentPowerW",
+                        "chargingPowerW",
+                        "powerW",
+                        "power",
+                    )
+                    if st.get(field) is not None
+                ),
+                self._last_applied_limits.get(st_id, 0.0) if has_tx else 0.0,
+            )
+            try:
+                st_power = max(0.0, float(live_power))
+            except (TypeError, ValueError):
+                st_power = 0.0
             if has_tx and is_online:
                 total_ev_current_power += st_power
 
@@ -358,11 +376,16 @@ class CitrineLoadController:
         # grid_w > 0 is importing, grid_w < 0 is exporting
         # house_loads = grid_import + solar_gen + battery_discharge - ev_power
         non_ev_house_w = max(0.0, grid_w + solar_w + battery_w - total_ev_current_power)
-        self.site_headroom_w = max(0.0, main_fuse_w - (grid_w - total_ev_current_power))
+        # Export does not create more than the configured import headroom.
+        current_non_ev_import_w = max(0.0, grid_w - total_ev_current_power)
+        self.site_headroom_w = max(0.0, main_fuse_w - current_non_ev_import_w)
 
         # Solar Surplus Calculation
-        # Raw surplus = solar_w - non_ev_house_w
-        raw_surplus_w = max(0.0, solar_w - non_ev_house_w)
+        # Prefer inverter generation telemetry, but fall back to measured grid
+        # export when the solar sensor is unavailable or reports zero.
+        calculated_solar_surplus_w = max(0.0, solar_w - non_ev_house_w)
+        measured_export_w = max(0.0, -grid_w)
+        raw_surplus_w = max(calculated_solar_surplus_w, measured_export_w)
         self.solar_surplus_w = raw_surplus_w
 
         # Compute Total Budget based on Mode
@@ -524,3 +547,28 @@ class CitrineLoadController:
             return float(state.state)
         except (ValueError, TypeError):
             return default
+
+    @staticmethod
+    def _station_has_active_ev(station: dict[str, Any]) -> bool:
+        """Return true when a transaction or connector state indicates an EV is present."""
+        if any(
+            station.get(key) is not None
+            for key in ("activeTransactionId", "currentTransactionId", "transactionId")
+        ):
+            return True
+
+        active_statuses = {
+            "charging",
+            "occupied",
+            "preparing",
+            "suspendeDEV",
+            "suspendeDEVSE",
+            "connected",
+        }
+        for connector in station.get("connectors", []):
+            if not isinstance(connector, dict):
+                continue
+            status = str(connector.get("status", "")).replace(" ", "").lower()
+            if status in {value.lower() for value in active_statuses}:
+                return True
+        return False

@@ -233,3 +233,59 @@ async def test_three_phase_unbalance_monitoring(mock_controller_env):
     assert controller.phase_unbalance_a == 20.0
 
 
+@pytest.mark.asyncio
+async def test_active_charging_connector_without_transaction_id_counts_as_active(
+    mock_controller_env,
+):
+    """A charging connector is active even when transaction ID telemetry is absent."""
+    controller, hass, client = mock_controller_env
+    controller.coordinator.data["stations"][0].pop("activeTransactionId", None)
+    controller.coordinator.data["stations"][0]["connectors"] = [
+        {
+            "connectorId": 1,
+            "evseId": 1,
+            "status": "Charging",
+            "isOnline": True,
+        }
+    ]
+
+    def get_state(entity_id):
+        state = MagicMock()
+        state.state = "0.0" if entity_id != "sensor.battery_soc" else "80.0"
+        return state
+
+    hass.states.get.side_effect = get_state
+
+    await controller.async_recompute()
+
+    assert controller.active_ev_count == 1
+
+
+@pytest.mark.asyncio
+async def test_export_is_surplus_and_does_not_inflate_site_headroom(mock_controller_env):
+    """Grid export supplies surplus, while headroom remains bounded by the import cap."""
+    controller, hass, client = mock_controller_env
+
+    def get_export_state(entity_id):
+        state = MagicMock()
+        if entity_id == "sensor.grid_power":
+            state.state = "-6000.0"
+        elif entity_id == "sensor.solar_power":
+            state.state = "0.0"
+        elif entity_id == "sensor.battery_power":
+            state.state = "0.0"
+        elif entity_id == "sensor.battery_soc":
+            state.state = "80.0"
+        else:
+            state.state = "0.0"
+        return state
+
+    hass.states.get.side_effect = get_export_state
+    controller._last_state_change_time.clear()
+
+    await controller.async_recompute()
+
+    assert controller.solar_surplus_w == 6000.0
+    assert controller.site_headroom_w == 14400.0
+
+

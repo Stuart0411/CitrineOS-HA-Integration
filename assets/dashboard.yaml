@@ -81,34 +81,20 @@ cards:
               service: citrine_ha.emergency_safe_mode
 
   - type: vertical-stack
-    title: Discovered Charging Stations
-    cards:
-      - type: custom:auto-entities
-        card:
-          type: entities
-          title: Connected EVSEs
-        filter:
-          include:
-            - domain: sensor
-              attributes:
-                device_class: null
-              entity_id: "*_session*"
-            - domain: select
-              entity_id: "*_override_mode"
-            - domain: select
-              entity_id: "*_priority_select"
-        card_param: entities
-        fallback_card:
-          type: markdown
-          content: >
-            *No charging stations actively discovered or connected.*
-            Ensure CitrineOS is running and your charger is connected via OCPP.
-
-  - type: vertical-stack
     title: CitrineOS & EMS Telemetry Health
     cards:
       - type: entities
+        title: Controller Health
+        show_header_toggle: false
         entities:
+          - entity: sensor.citrine_discovery_status
+            name: Discovery Status
+          - entity: sensor.citrine_controller_health
+            name: Controller Health
+          - entity: sensor.citrine_controller_state
+            name: Controller State
+          - entity: sensor.citrine_active_ev_count
+            name: Active EV Count
           - entity: sensor.citrine_ems_telemetry_health
             name: Citrine Data API Health
           - entity: sensor.citrine_mqtt_intent_status
@@ -119,3 +105,13 @@ cards:
             name: Rejected Intake Envelopes
           - entity: sensor.citrine_ems_telemetry_freshness
             name: Telemetry Freshness (s)
+
+  - type: markdown
+    title: Charger Entities
+    content: >
+      Charger-specific entities are created after CitrineOS discovery. Add those
+      actual entity IDs from Settings -> Devices & Services -> Entities once the
+      discovery status is healthy. This dashboard intentionally contains no
+      placeholder charger IDs.
+      - type: entities
+
