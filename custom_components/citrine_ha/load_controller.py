@@ -111,8 +111,15 @@ class CitrineLoadController:
         self.phase_b_current_a = 0.0
         self.phase_c_current_a = 0.0
         self.phase_unbalance_a = 0.0
+        self.telemetry_health = "unknown"
+        self.telemetry_error: str | None = None
         self.last_run_timestamp: str | None = None
         self.last_error: str | None = None
+        self.last_command_status = "idle"
+        self.last_command_station_id: str | None = None
+        self.last_command_limit_w: float | None = None
+        self.last_command_timestamp: str | None = None
+        self.last_command_error: str | None = None
 
         # Tracking per station
         self._last_applied_limits: dict[str, float] = {}
@@ -247,6 +254,9 @@ class CitrineLoadController:
         )
 
         # Telemetry ingestion
+        telemetry_health, telemetry_error = self._critical_telemetry_health()
+        self.telemetry_health = telemetry_health
+        self.telemetry_error = telemetry_error
         grid_val = self._read_sensor_value(CONF_GRID_POWER_SENSOR, 0.0)
         grid_w = float(grid_val if grid_val is not None else 0.0)
         solar_val = self._read_sensor_value(CONF_SOLAR_POWER_SENSOR, 0.0)
@@ -429,6 +439,11 @@ class CitrineLoadController:
             total_budget_w = 0.0
             self.state_status = "Unknown Mode"
 
+        if telemetry_health != "ok":
+            total_budget_w = 0.0
+            self.state_status = "Safe Fallback: telemetry unavailable"
+            self.last_error = telemetry_error
+
         # Hard safety clamp: Never exceed site fuse headroom
         total_budget_w = min(total_budget_w, self.site_headroom_w)
 
@@ -505,11 +520,17 @@ class CitrineLoadController:
             await self._apply_station_limit(st_ctx, target_limit)
             self._last_applied_limits[st_ctx.station_id] = target_limit
 
-        self.last_error = None
+        if telemetry_health == "ok":
+            self.last_error = None
 
     async def _apply_station_limit(self, st_ctx: StationLoadContext, limit_w: float) -> None:
         """Send charging limit to CitrineOS for a station."""
         protocol = self.coordinator.get_station_protocol(st_ctx.station_id, st_ctx.protocol) or "ocpp2.0.1"
+        self.last_command_status = "pending"
+        self.last_command_station_id = st_ctx.station_id
+        self.last_command_limit_w = round(limit_w, 1)
+        self.last_command_timestamp = datetime.now(UTC).isoformat()
+        self.last_command_error = None
         try:
             _LOGGER.info(
                 "Dispatching load limit: station=%s protocol=%s limit=%.1fW",
@@ -525,6 +546,8 @@ class CitrineLoadController:
                 evse_id=st_ctx.evse_id,
                 duration=300,
             )
+            self.last_command_status = "accepted"
+            self.last_command_timestamp = datetime.now(UTC).isoformat()
         except CitrineApiError as err:
             _LOGGER.warning(
                 "Failed to apply load limit %.1fW to station %s: %s",
@@ -532,6 +555,9 @@ class CitrineLoadController:
                 st_ctx.station_id,
                 err,
             )
+            self.last_command_status = "failed"
+            self.last_command_timestamp = datetime.now(UTC).isoformat()
+            self.last_command_error = str(err)[:300]
             self.last_error = f"Limit failed on {st_ctx.station_id}: {err}"
 
     def _read_sensor_value(self, config_key: str, default: float | None = 0.0) -> float | None:
@@ -547,6 +573,28 @@ class CitrineLoadController:
             return float(state.state)
         except (ValueError, TypeError):
             return default
+
+    def _critical_telemetry_health(self) -> tuple[str, str | None]:
+        """Validate configured grid telemetry before allowing EV power allocation."""
+        required = {
+            CONF_GRID_POWER_SENSOR: "grid power",
+        }
+        for config_key, label in required.items():
+            entity_id = self.entry.options.get(config_key) or self.entry.data.get(config_key)
+            if not entity_id or not str(entity_id).strip():
+                continue
+
+            state = self.hass.states.get(str(entity_id).strip())
+            if state is None:
+                return "stale", f"{label} sensor is not available: {entity_id}"
+            if state.state in {"unknown", "unavailable", ""}:
+                return "stale", f"{label} sensor state is {state.state or 'empty'}: {entity_id}"
+            try:
+                float(state.state)
+            except (TypeError, ValueError):
+                return "invalid", f"{label} sensor is not numeric: {entity_id}"
+
+        return "ok", None
 
     @staticmethod
     def _station_has_active_ev(station: dict[str, Any]) -> bool:

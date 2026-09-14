@@ -251,7 +251,10 @@ async def test_active_charging_connector_without_transaction_id_counts_as_active
 
     def get_state(entity_id):
         state = MagicMock()
-        state.state = "0.0" if entity_id != "sensor.battery_soc" else "80.0"
+        if entity_id == "sensor.grid_power":
+            state.state = "-3000.0"
+        else:
+            state.state = "0.0" if entity_id != "sensor.battery_soc" else "80.0"
         return state
 
     hass.states.get.side_effect = get_state
@@ -259,6 +262,51 @@ async def test_active_charging_connector_without_transaction_id_counts_as_active
     await controller.async_recompute()
 
     assert controller.active_ev_count == 1
+
+
+@pytest.mark.asyncio
+async def test_unavailable_grid_sensor_forces_safe_fallback(mock_controller_env):
+    """Configured unavailable grid telemetry must prevent EV allocation."""
+    controller, hass, client = mock_controller_env
+
+    def get_unavailable_state(entity_id):
+        state = MagicMock()
+        if entity_id == "sensor.grid_power":
+            state.state = "unavailable"
+        else:
+            state.state = "0.0"
+        return state
+
+    hass.states.get.side_effect = get_unavailable_state
+
+    await controller.async_recompute()
+
+    assert controller.telemetry_health == "stale"
+    assert controller.allocated_ev_power_w == 0.0
+    assert controller.state_status == "Safe Fallback: telemetry unavailable"
+    assert "grid power sensor state is unavailable" in controller.telemetry_error
+
+
+@pytest.mark.asyncio
+async def test_limit_command_status_is_recorded(mock_controller_env):
+    """Accepted station limit commands are visible to HA diagnostics."""
+    controller, hass, client = mock_controller_env
+
+    def get_state(entity_id):
+        state = MagicMock()
+        if entity_id == "sensor.grid_power":
+            state.state = "-3000.0"
+        else:
+            state.state = "0.0" if entity_id != "sensor.battery_soc" else "80.0"
+        return state
+
+    hass.states.get.side_effect = get_state
+    await controller.async_recompute()
+
+    assert controller.last_command_status == "accepted"
+    assert controller.last_command_station_id == "CS1"
+    assert controller.last_command_limit_w == 2750.0
+    assert controller.last_command_error is None
 
 
 @pytest.mark.asyncio

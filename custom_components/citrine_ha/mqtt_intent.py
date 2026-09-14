@@ -30,6 +30,8 @@ class MqttIntentPublisher:
 
         self.last_published_at: str | None = None
         self.publish_count: int = 0
+        self.publish_failure_count: int = 0
+        self.last_attempt_count: int = 0
         self.last_publish_success: bool = True
         self.last_error: str | None = None
 
@@ -91,32 +93,47 @@ class MqttIntentPublisher:
             },
         }
 
-        try:
-            payload_str = json.dumps(payload)
-            await self.hass.services.async_call(
-                "mqtt",
-                "publish",
-                {
-                    "topic": self.intent_topic,
-                    "payload": payload_str,
-                    "retain": False,
-                    "qos": 0,
-                },
-                blocking=True,
-            )
-            self.last_published_at = now_iso
-            self.publish_count += 1
-            self.last_publish_success = True
-            self.last_error = None
-            _LOGGER.debug(
-                "Published EMS site intent to %s (Allocated %.1fW across %d stations)",
-                self.intent_topic,
-                allocated_ev_power_w,
-                len(allocations),
-            )
-            return True
-        except Exception as err:  # noqa: BLE001
-            self.last_publish_success = False
-            self.last_error = str(err)
-            _LOGGER.warning("Failed to publish MQTT intent to %s: %s", self.intent_topic, err)
-            return False
+        payload_str = json.dumps(payload)
+        publish_data = {
+            "topic": self.intent_topic,
+            "payload": payload_str,
+            "retain": False,
+            "qos": 0,
+        }
+
+        self.last_attempt_count = 0
+        last_error: Exception | None = None
+        for attempt in range(1, 4):
+            self.last_attempt_count = attempt
+            try:
+                await self.hass.services.async_call(
+                    "mqtt",
+                    "publish",
+                    publish_data,
+                    blocking=True,
+                )
+                self.last_published_at = now_iso
+                self.publish_count += 1
+                self.last_publish_success = True
+                self.last_error = None
+                _LOGGER.debug(
+                    "Published EMS site intent to %s (attempt=%s allocated=%.1fW stations=%d)",
+                    self.intent_topic,
+                    attempt,
+                    allocated_ev_power_w,
+                    len(allocations),
+                )
+                return True
+            except Exception as err:  # noqa: BLE001
+                last_error = err
+                _LOGGER.warning(
+                    "MQTT intent publish failed (attempt=%s/3) to %s: %s",
+                    attempt,
+                    self.intent_topic,
+                    err,
+                )
+
+        self.publish_failure_count += 1
+        self.last_publish_success = False
+        self.last_error = str(last_error) if last_error else "Unknown MQTT publish failure"
+        return False

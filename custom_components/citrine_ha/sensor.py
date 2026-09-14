@@ -71,6 +71,7 @@ async def async_setup_entry(
             CitrineEmsIntakeTotalSensor(coordinator, entry),
             CitrineEmsTelemetryFreshnessSensor(coordinator, entry),
             CitrineEmsTelemetryHealthStatusSensor(coordinator, entry),
+            CitrineLastCommandStatusSensor(controller, entry),
         ]
     )
 
@@ -731,7 +732,44 @@ class CitrineLoadControllerStateSensor(SensorEntity):
             "mode": self._controller.mode,
             "last_run": self._controller.last_run_timestamp,
             "last_error": self._controller.last_error,
+            "telemetry_health": self._controller.telemetry_health,
+            "telemetry_error": self._controller.telemetry_error,
+            "last_command_status": self._controller.last_command_status,
+            "last_command_station_id": self._controller.last_command_station_id,
+            "last_command_limit_w": self._controller.last_command_limit_w,
+            "last_command_timestamp": self._controller.last_command_timestamp,
+            "last_command_error": self._controller.last_command_error,
             "active_ev_count": self._controller.active_ev_count,
+        }
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _site_device_info(self._entry)
+
+
+class CitrineLastCommandStatusSensor(SensorEntity):
+    """Status and details of the most recent CitrineOS limit command."""
+
+    _attr_icon = "mdi:transmission-tower-export"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, controller: CitrineLoadController, entry: ConfigEntry) -> None:
+        self._controller = controller
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_last_command_status"
+        self._attr_name = "Citrine Last Command Status"
+
+    @property
+    def native_value(self) -> str:
+        return self._controller.last_command_status
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "station_id": self._controller.last_command_station_id,
+            "limit_w": self._controller.last_command_limit_w,
+            "timestamp": self._controller.last_command_timestamp,
+            "error": self._controller.last_command_error,
         }
 
     @property
@@ -856,6 +894,8 @@ class CitrineMqttIntentStatusSensor(SensorEntity):
             "site_id": pub.site_id,
             "ttl_seconds": pub.ttl_seconds,
             "publish_count": pub.publish_count,
+            "publish_failure_count": pub.publish_failure_count,
+            "last_attempt_count": pub.last_attempt_count,
             "last_published_at": pub.last_published_at,
             "last_publish_success": pub.last_publish_success,
             "last_error": pub.last_error,

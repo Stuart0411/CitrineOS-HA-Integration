@@ -100,3 +100,58 @@ async def test_mqtt_unavailable_graceful_handling():
     assert success is False
     assert publisher.last_publish_success is False
     assert "MQTT integration not available" in str(publisher.last_error)
+
+
+@pytest.mark.asyncio
+async def test_mqtt_publish_retries_transient_failure():
+    """A transient MQTT service error is retried and eventually succeeds."""
+    hass_mock = MagicMock()
+    hass_mock.services.has_service.return_value = True
+    hass_mock.services.async_call = AsyncMock(
+        side_effect=[RuntimeError("temporary broker failure"), None]
+    )
+
+    publisher = MqttIntentPublisher(hass_mock, site_id="site-retry")
+    success = await publisher.async_publish_intent(
+        operation_mode="Solar Only",
+        reason="Tracking Solar",
+        max_import_power_w=30000.0,
+        max_export_power_w=5000.0,
+        allocated_ev_power_w=5750.0,
+        solar_surplus_w=6000.0,
+        site_headroom_w=30000.0,
+        allocations=[],
+    )
+
+    assert success is True
+    assert publisher.last_attempt_count == 2
+    assert publisher.publish_count == 1
+    assert publisher.publish_failure_count == 0
+    assert hass_mock.services.async_call.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_mqtt_publish_reports_exhausted_retries():
+    """Three failed publish attempts produce one observable delivery failure."""
+    hass_mock = MagicMock()
+    hass_mock.services.has_service.return_value = True
+    hass_mock.services.async_call = AsyncMock(side_effect=RuntimeError("broker offline"))
+
+    publisher = MqttIntentPublisher(hass_mock, site_id="site-failure")
+    success = await publisher.async_publish_intent(
+        operation_mode="Emergency Safe",
+        reason="Safe fallback",
+        max_import_power_w=30000.0,
+        max_export_power_w=5000.0,
+        allocated_ev_power_w=0.0,
+        solar_surplus_w=0.0,
+        site_headroom_w=30000.0,
+        allocations=[],
+    )
+
+    assert success is False
+    assert publisher.last_attempt_count == 3
+    assert publisher.publish_count == 0
+    assert publisher.publish_failure_count == 1
+    assert publisher.last_publish_success is False
+    assert publisher.last_error == "broker offline"
