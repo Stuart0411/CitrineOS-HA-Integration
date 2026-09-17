@@ -67,8 +67,17 @@ async def test_mqtt_publish_payload_schema():
     assert payload["schemaVersion"] == "1.1.0"
     assert payload["siteId"] == "site-test-101"
     assert payload["operationMode"] == "Solar Only"
+    assert payload["mode"] == "ExternalLimits"
+    assert payload["messageId"]
+    assert payload["source"]["system"] == "home-assistant"
+    assert payload["createdAt"]
+    assert payload["expiresAt"]
     assert payload["reason"] == "Tracking Solar"
     assert payload["ttlSeconds"] == 60
+    assert payload["constraints"]["maxImportW"] == 14400.0
+    assert payload["constraints"]["maxExportW"] == 5000.0
+    assert payload["constraints"]["evChargeBudgetW"] == 4140.0
+    assert payload["constraints"]["evDischargeBudgetW"] == 0.0
     assert payload["siteLimits"]["maxImportPowerW"] == 14400.0
     assert payload["siteLimits"]["allocatedEvPowerW"] == 4140.0
     assert payload["siteLimits"]["solarSurplusPowerW"] == 4500.0

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 from homeassistant.core import HomeAssistant
 
@@ -67,14 +68,46 @@ class MqttIntentPublisher:
             return False
 
         now_iso = datetime.now(UTC).isoformat()
+        expires_iso = (
+            datetime.now(UTC) + timedelta(seconds=self.ttl_seconds)
+        ).isoformat()
+        ems_mode = self._normalize_operation_mode(operation_mode)
+        allow_discharge = any(
+            float(allocation.get("dischargeLimitW", 0) or 0) > 0
+            for allocation in allocations
+        )
         payload = {
+            # Native CitrineOS EMS intent contract.
+            "messageId": str(uuid4()),
+            "siteId": self.site_id,
+            "source": {
+                "system": "home-assistant",
+                "component": "citrine_ha",
+                "instance": self.site_id,
+            },
+            "createdAt": now_iso,
+            "expiresAt": expires_iso,
+            "mode": ems_mode,
+            "constraints": {
+                "maxImportW": round(float(max_import_power_w), 1),
+                "maxExportW": round(float(max_export_power_w), 1),
+                "evChargeBudgetW": round(float(allocated_ev_power_w), 1),
+                "evDischargeBudgetW": round(
+                    sum(float(item.get("dischargeLimitW", 0) or 0) for item in allocations),
+                    1,
+                ),
+            },
+            "flags": {
+                "allowDischarge": allow_discharge,
+                "emergencyCurtailment": ems_mode == "Idle",
+            },
+            "reason": reason,
+            # Legacy/diagnostic fields retained for existing consumers.
             "$schema": "https://citrineos.github.io/schemas/ems/intent/v1.json",
             "schemaVersion": "1.1.0",
-            "siteId": self.site_id,
             "timestamp": now_iso,
             "ttlSeconds": self.ttl_seconds,
             "operationMode": operation_mode,
-            "reason": reason,
             "siteLimits": {
                 "maxImportPowerW": round(float(max_import_power_w), 1),
                 "maxExportPowerW": round(float(max_export_power_w), 1),
@@ -90,6 +123,7 @@ class MqttIntentPublisher:
             "metadata": {
                 "source": "home-assistant-citrine_ha",
                 "version": "0.2.0",
+                "nativeContract": "EmsSiteIntentCreate",
             },
         }
 
@@ -137,3 +171,10 @@ class MqttIntentPublisher:
         self.last_publish_success = False
         self.last_error = str(last_error) if last_error else "Unknown MQTT publish failure"
         return False
+
+    @staticmethod
+    def _normalize_operation_mode(operation_mode: str) -> str:
+        """Map HA-friendly mode labels to valid CitrineOS EMS modes."""
+        if operation_mode in {"Off", "Emergency Safe"}:
+            return "Idle"
+        return "ExternalLimits"
