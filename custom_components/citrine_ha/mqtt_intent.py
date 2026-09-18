@@ -67,10 +67,9 @@ class MqttIntentPublisher:
             self.last_error = "MQTT integration not available in Home Assistant"
             return False
 
-        now_iso = datetime.now(UTC).isoformat()
-        expires_iso = (
-            datetime.now(UTC) + timedelta(seconds=self.ttl_seconds)
-        ).isoformat()
+        now = datetime.now(UTC)
+        now_iso = self._format_utc(now)
+        expires_iso = self._format_utc(now + timedelta(seconds=self.ttl_seconds))
         ems_mode = self._normalize_operation_mode(operation_mode)
         allow_discharge = any(
             float(allocation.get("dischargeLimitW", 0) or 0) > 0
@@ -178,3 +177,8 @@ class MqttIntentPublisher:
         if operation_mode in {"Off", "Emergency Safe"}:
             return "Idle"
         return "ExternalLimits"
+
+    @staticmethod
+    def _format_utc(value: datetime) -> str:
+        """Format UTC timestamps using the strict CitrineOS ISO-8601 contract."""
+        return value.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")

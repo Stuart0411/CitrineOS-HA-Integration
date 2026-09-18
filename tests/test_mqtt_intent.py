@@ -70,8 +70,8 @@ async def test_mqtt_publish_payload_schema():
     assert payload["mode"] == "ExternalLimits"
     assert payload["messageId"]
     assert payload["source"]["system"] == "home-assistant"
-    assert payload["createdAt"]
-    assert payload["expiresAt"]
+    assert payload["createdAt"].endswith("Z")
+    assert payload["expiresAt"].endswith("Z")
     assert payload["reason"] == "Tracking Solar"
     assert payload["ttlSeconds"] == 60
     assert payload["constraints"]["maxImportW"] == 14400.0
