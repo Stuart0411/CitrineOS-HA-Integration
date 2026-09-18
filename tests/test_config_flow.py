@@ -6,6 +6,7 @@ from custom_components.citrine_ha.config_flow import CitrineConfigFlow, CitrineO
 from custom_components.citrine_ha.const import (
     CONF_BASE_URL,
     CONF_CONTROLLER_MODE,
+    CONF_EMS_INTENT_MODE,
     CONF_MAIN_FUSE_LIMIT_W,
     CONF_NAME,
     CONF_TENANT_ID,
@@ -39,11 +40,13 @@ async def test_load_control_schema_rendering():
     """Verify _load_control_schema constructs without crashing."""
     schema = CitrineConfigFlow._load_control_schema({
         CONF_CONTROLLER_MODE: "Solar Only",
+        CONF_EMS_INTENT_MODE: "ExternalLimits",
         CONF_MAIN_FUSE_LIMIT_W: "15000",
         "grid_power_sensor": "sensor.grid_power",
         "doe_import_limit_sensor": None,
     })
     assert schema is not None
+    assert CONF_EMS_INTENT_MODE in [key.schema for key in schema.schema.keys()]
 
 
 @pytest.mark.asyncio

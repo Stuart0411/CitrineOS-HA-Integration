@@ -20,6 +20,7 @@ from .const import (
     CONF_BATTERY_SOC_SENSOR,
     CONF_CONTROLLER_INTERVAL_SECS,
     CONF_CONTROLLER_MODE,
+    CONF_EMS_INTENT_MODE,
     CONF_DEADBAND_W,
     CONF_DOE_EXPORT_LIMIT_SENSOR,
     CONF_DOE_IMPORT_LIMIT_SENSOR,
@@ -43,6 +44,7 @@ from .const import (
     DEFAULT_BATTERY_MIN_SOC,
     DEFAULT_CONTROLLER_INTERVAL_SECS,
     DEFAULT_CONTROLLER_MODE,
+    DEFAULT_EMS_INTENT_MODE,
     DEFAULT_DEADBAND_W,
     DEFAULT_MAIN_FUSE_CURRENT_A,
     DEFAULT_MAIN_FUSE_LIMIT_W,
@@ -102,6 +104,10 @@ class CitrineLoadController:
 
         # Dynamic State Variables
         self.mode = str(entry.options.get(CONF_CONTROLLER_MODE) or entry.data.get(CONF_CONTROLLER_MODE) or DEFAULT_CONTROLLER_MODE)
+        self.ems_intent_mode = str(
+            entry.options.get(CONF_EMS_INTENT_MODE)
+            or entry.data.get(CONF_EMS_INTENT_MODE, DEFAULT_EMS_INTENT_MODE)
+        )
         self.state_status = "Initialized"
         self.site_headroom_w = 0.0
         self.allocated_ev_power_w = 0.0
@@ -480,7 +486,7 @@ class CitrineLoadController:
             for st_ctx in station_contexts
         ]
         await self.mqtt_publisher.async_publish_intent(
-            operation_mode=self.mode,
+            operation_mode=self.ems_intent_mode,
             reason=self.state_status,
             max_import_power_w=main_fuse_w,
             max_export_power_w=export_limit_w,

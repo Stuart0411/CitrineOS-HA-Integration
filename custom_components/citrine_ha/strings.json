@@ -32,6 +32,7 @@
           "doe_import_limit_sensor": "CSIP-Aus / DOE Dynamic Import Limit Sensor (Watts, optional)",
           "doe_export_limit_sensor": "CSIP-Aus / DOE Dynamic Export Limit Sensor (Watts, optional)",
           "controller_mode": "Initial Control Mode",
+          "ems_intent_mode": "EMS MQTT Intent Mode",
           "main_fuse_limit_w": "Main Grid Fuse Import Safety Limit (Watts)",
           "solar_start_buffer_w": "Solar Surplus Buffer (Watts)",
           "site_phases": "Site Electrical Supply (1-Phase or 3-Phase)"
@@ -59,6 +60,7 @@
           "doe_import_limit_sensor": "CSIP-Aus / DOE Dynamic Import Limit Sensor (Watts)",
           "doe_export_limit_sensor": "CSIP-Aus / DOE Dynamic Export Limit Sensor (Watts)",
           "controller_mode": "Active Control Mode",
+          "ems_intent_mode": "EMS MQTT Intent Mode",
           "main_fuse_limit_w": "Main Grid Fuse Limit (Watts)",
           "main_fuse_current_a": "Main Grid Fuse Current Per-Phase (Amps)",
           "max_phase_unbalance_a": "Maximum Allowed Phase-to-Phase Unbalance (Amps)",

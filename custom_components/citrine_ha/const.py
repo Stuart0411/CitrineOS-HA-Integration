@@ -110,6 +110,7 @@ CONF_MIN_CHARGE_CURRENT_A = "min_charge_current_a"
 CONF_RAMP_RATE_W_S = "ramp_rate_w_s"
 CONF_CONTROLLER_INTERVAL_SECS = "controller_interval_secs"
 CONF_CONTROLLER_MODE = "controller_mode"
+CONF_EMS_INTENT_MODE = "ems_intent_mode"
 CONF_SITE_PHASES = "site_phases"
 CONF_NOMINAL_VOLTAGE = "nominal_voltage"
 CONF_DEADBAND_W = "deadband_w"
@@ -144,6 +145,17 @@ DEFAULT_MIN_CHARGE_CURRENT_A = 6.0
 DEFAULT_RAMP_RATE_W_S = 500.0
 DEFAULT_CONTROLLER_INTERVAL_SECS = 3
 DEFAULT_CONTROLLER_MODE = MODE_SOLAR_ONLY
+DEFAULT_EMS_INTENT_MODE = "ExternalLimits"
+
+EMS_INTENT_MODES = [
+    "ChargingOnly",
+    "ExternalLimits",
+    "CentralSetpoint",
+    "ExternalSetpoint",
+    "LocalFrequency",
+    "LocalLoadBalancing",
+    "Idle",
+]
 DEFAULT_SITE_PHASES = 1
 DEFAULT_NOMINAL_VOLTAGE = 230.0
 DEFAULT_BATTERY_MIN_SOC = 20.0

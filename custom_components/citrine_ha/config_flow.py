@@ -19,6 +19,7 @@ from .const import (
     CONF_BATTERY_SOC_SENSOR,
     CONF_CONTROLLER_INTERVAL_SECS,
     CONF_CONTROLLER_MODE,
+    CONF_EMS_INTENT_MODE,
     CONF_DEADBAND_W,
     CONF_DEFAULT_EVSE_ID,
     CONF_DEFAULT_ID_TAG,
@@ -57,6 +58,7 @@ from .const import (
     DEFAULT_BATTERY_MIN_SOC,
     DEFAULT_CONTROLLER_INTERVAL_SECS,
     DEFAULT_CONTROLLER_MODE,
+    DEFAULT_EMS_INTENT_MODE,
     DEFAULT_DEADBAND_W,
     DEFAULT_DEFAULT_EVSE_ID,
     DEFAULT_DEFAULT_ID_TAG,
@@ -82,6 +84,7 @@ from .const import (
     DEFAULT_TENANT_ID,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
+    EMS_INTENT_MODES,
 )
 from .hasura_client import HasuraAuthError, HasuraClient, HasuraError
 
@@ -277,6 +280,16 @@ class CitrineConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
         schema[vol.Optional(
+            CONF_EMS_INTENT_MODE,
+            default=str(_val(CONF_EMS_INTENT_MODE, DEFAULT_EMS_INTENT_MODE)),
+        )] = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=EMS_INTENT_MODES,
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        )
+
+        schema[vol.Optional(
             CONF_MAIN_FUSE_LIMIT_W,
             default=_float(CONF_MAIN_FUSE_LIMIT_W, DEFAULT_MAIN_FUSE_LIMIT_W),
         )] = selector.NumberSelector(
@@ -387,6 +400,16 @@ class CitrineOptionsFlow(config_entries.OptionsFlow):
         )] = selector.SelectSelector(
             selector.SelectSelectorConfig(
                 options=CONTROLLER_MODES,
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        )
+
+        schema[vol.Optional(
+            CONF_EMS_INTENT_MODE,
+            default=str(_val(CONF_EMS_INTENT_MODE, DEFAULT_EMS_INTENT_MODE)),
+        )] = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=EMS_INTENT_MODES,
                 mode=selector.SelectSelectorMode.DROPDOWN,
             )
         )

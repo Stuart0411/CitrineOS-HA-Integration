@@ -38,7 +38,7 @@ async def test_mqtt_publish_payload_schema():
     ]
 
     success = await publisher.async_publish_intent(
-        operation_mode="Solar Only",
+        operation_mode="ExternalLimits",
         reason="Tracking Solar",
         max_import_power_w=14400.0,
         max_export_power_w=5000.0,
@@ -66,7 +66,7 @@ async def test_mqtt_publish_payload_schema():
     payload = json.loads(data["payload"])
     assert payload["schemaVersion"] == "1.1.0"
     assert payload["siteId"] == "site-test-101"
-    assert payload["operationMode"] == "Solar Only"
+    assert payload["operationMode"] == "ExternalLimits"
     assert payload["mode"] == "ExternalLimits"
     assert payload["messageId"]
     assert payload["source"]["system"] == "home-assistant"
