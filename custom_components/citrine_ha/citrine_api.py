@@ -70,6 +70,7 @@ class CitrineClient:
             # Prefer OCPP router view first: it is most likely to include the active
             # command identifier used for websocket routing.
             "/data/ocpprouter/chargingStation",
+            "/data/ocpprouter/chargingStations",
             "/data/configuration/chargingStation",
             "/data/chargingStation",
             "/data/monitoring/chargingStation",
@@ -87,6 +88,10 @@ class CitrineClient:
         """Fetch connectors/EVSEs directly from CitrineOS REST data endpoints."""
         params = {"tenantId": self._tenant_id}
         paths = [
+            "/data/ocpprouter/connector",
+            "/data/ocpprouter/connectors",
+            "/data/ocpprouter/evse",
+            "/data/ocpprouter/evses",
             "/data/configuration/connector",
             "/data/configuration/evse",
             "/data/connector",
@@ -601,6 +606,14 @@ class CitrineClient:
                     "set_station_limit global identifier fallback activated for station=%s with candidates=%s",
                     station_key,
                     candidates,
+                )
+            else:
+                _LOGGER.warning(
+                    "set_station_limit could not derive identifier candidates: station=%s stations=%s connectors=%s transactions=%s",
+                    station_key,
+                    len(stations),
+                    len(connectors),
+                    len(transactions),
                 )
 
         return candidates

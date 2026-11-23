@@ -72,6 +72,27 @@ async def test_get_charging_stations_prefers_ocpprouter_endpoint_first():
 
 
 @pytest.mark.asyncio
+async def test_get_connectors_prefers_ocpprouter_endpoint_first():
+    """Connector discovery should prioritize OCPP router endpoint for identifier mapping."""
+    session_mock = MagicMock()
+    client = CitrineClient(
+        session=session_mock,
+        base_url="http://localhost:8080",
+        tenant_id=1,
+        auth_token="secret",
+        verify_ssl=False,
+        request_timeout=10,
+    )
+
+    client._request_with_fallback_paths = AsyncMock(return_value=[{"stationId": "10919352"}])
+    connectors = await client.get_connectors()
+
+    assert connectors == [{"stationId": "10919352"}]
+    called_paths = client._request_with_fallback_paths.await_args.kwargs["paths"]
+    assert called_paths[0] == "/data/ocpprouter/connector"
+
+
+@pytest.mark.asyncio
 async def test_set_station_limit_retries_with_discovered_identifier():
     """When DB id has no active connection, retry with discovered runtime identifier."""
     session_mock = MagicMock()
