@@ -166,3 +166,49 @@ async def test_set_station_limit_retries_with_connector_identifier_fallback():
     second_params = client._request_with_fallback_paths.await_args_list[1].kwargs["params"]
     assert first_params["identifier"] == "2"
     assert second_params["identifier"] == "10919352"
+
+
+@pytest.mark.asyncio
+async def test_set_station_limit_retries_with_global_candidate_pool():
+    """When station-key matching fails, fallback should still try small global identifier pool."""
+    session_mock = MagicMock()
+    client = CitrineClient(
+        session=session_mock,
+        base_url="http://localhost:8080",
+        tenant_id=1,
+        auth_token="secret",
+        verify_ssl=False,
+        request_timeout=10,
+    )
+
+    # No direct match to requested key, but discovery contains one plausible runtime identifier.
+    client.get_charging_stations = AsyncMock(
+        return_value=[{"id": 2, "chargePointSerialNumber": "SN2507190633"}]
+    )
+    client.get_connectors = AsyncMock(
+        return_value=[{"stationId": "10919352", "connectorId": 1, "evseId": 1}]
+    )
+    client.get_transactions = AsyncMock(return_value=[])
+    client._request_with_fallback_paths = AsyncMock(
+        side_effect=[
+            [{"success": False, "payload": "No connection found for identifier: 1:SN2507190633"}],
+            [{"success": True, "payload": {"status": "Accepted"}}],
+        ]
+    )
+
+    response = await client.set_station_limit(
+        protocol="ocpp2.1",
+        station_id="SN2507190633",
+        limit=7400.0,
+        unit="W",
+        evse_id=0,
+        duration=300,
+    )
+
+    assert isinstance(response, list)
+    assert response[0]["success"] is True
+    assert client._request_with_fallback_paths.await_count == 2
+    first_params = client._request_with_fallback_paths.await_args_list[0].kwargs["params"]
+    second_params = client._request_with_fallback_paths.await_args_list[1].kwargs["params"]
+    assert first_params["identifier"] == "SN2507190633"
+    assert second_params["identifier"] == "10919352"

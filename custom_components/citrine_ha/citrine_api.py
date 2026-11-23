@@ -545,14 +545,12 @@ class CitrineClient:
                     candidates.append(candidate)
 
         if not candidates:
-            # Last-resort: if there is exactly one online station with a clear identifier,
-            # prefer it over a known-bad DB id in single-station deployments.
-            online_identifiers: list[str] = []
+            # Last-resort: derive a global candidate pool from all discovery feeds.
+            # This rescues deployments where station references differ between endpoints.
+            pool: list[str] = []
+
             for station in stations:
                 if not isinstance(station, dict):
-                    continue
-                is_online = station.get("isOnline")
-                if is_online is False:
                     continue
                 for key in (
                     "identifier",
@@ -565,11 +563,45 @@ class CitrineClient:
                     if value is None:
                         continue
                     candidate = str(value).strip()
-                    if candidate and candidate not in online_identifiers:
-                        online_identifiers.append(candidate)
+                    if candidate and candidate not in pool:
+                        pool.append(candidate)
 
-            if len(online_identifiers) == 1:
-                candidates.append(online_identifiers[0])
+            for connector in connectors:
+                if not isinstance(connector, dict):
+                    continue
+                for key in ("stationId", "chargingStationId", "identifier"):
+                    value = connector.get(key)
+                    if value is None:
+                        continue
+                    candidate = str(value).strip()
+                    if candidate and candidate not in pool:
+                        pool.append(candidate)
+
+            for tx in transactions:
+                if not isinstance(tx, dict):
+                    continue
+                for key in ("stationId", "chargingStationId", "identifier"):
+                    value = tx.get(key)
+                    if value is None:
+                        continue
+                    candidate = str(value).strip()
+                    if candidate and candidate not in pool:
+                        pool.append(candidate)
+
+            # Prefer a single clear alternative. If there are only a few candidates,
+            # allow trying all to discover the live websocket identifier.
+            filtered_pool = [candidate for candidate in pool if candidate != station_key]
+            if len(filtered_pool) == 1:
+                candidates.append(filtered_pool[0])
+            elif 1 < len(filtered_pool) <= 5:
+                candidates.extend(filtered_pool)
+
+            if candidates:
+                _LOGGER.warning(
+                    "set_station_limit global identifier fallback activated for station=%s with candidates=%s",
+                    station_key,
+                    candidates,
+                )
 
         return candidates
 
