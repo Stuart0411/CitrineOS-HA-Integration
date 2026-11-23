@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import logging
 from typing import Any
@@ -728,7 +729,10 @@ def _station_identifier_overrides(entry: ConfigEntry) -> dict[str, str]:
         try:
             payload = json.loads(text)
         except json.JSONDecodeError:
-            return {}
+            try:
+                payload = ast.literal_eval(text)
+            except (ValueError, SyntaxError):
+                return {}
 
     if not isinstance(payload, dict):
         return {}

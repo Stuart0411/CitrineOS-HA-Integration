@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
 from datetime import UTC, datetime
 import json
@@ -624,10 +625,13 @@ class CitrineLoadController:
             try:
                 payload = json.loads(text)
             except json.JSONDecodeError:
-                _LOGGER.warning(
-                    "Invalid station_identifier_overrides JSON; expected object like {\"2\":\"10919352\"}"
-                )
-                return {}
+                try:
+                    payload = ast.literal_eval(text)
+                except (ValueError, SyntaxError):
+                    _LOGGER.warning(
+                        "Invalid station_identifier_overrides JSON; expected object mapping station ids to identifiers"
+                    )
+                    return {}
 
         if not isinstance(payload, dict):
             return {}
