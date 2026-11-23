@@ -48,3 +48,50 @@ async def test_discover_chargers_rest_pipeline():
     assert result["stations"][0]["id"] == "CS100"
     assert len(result["connectors"]) == 1
     assert len(result["transactions"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_set_station_limit_retries_with_discovered_identifier():
+    """When DB id has no active connection, retry with discovered runtime identifier."""
+    session_mock = MagicMock()
+    client = CitrineClient(
+        session=session_mock,
+        base_url="http://localhost:8080",
+        tenant_id=1,
+        auth_token="secret",
+        verify_ssl=False,
+        request_timeout=10,
+    )
+
+    client.get_charging_stations = AsyncMock(
+        return_value=[
+            {
+                "id": 2,
+                "identifier": "10919352",
+                "protocol": "ocpp2.1",
+            }
+        ]
+    )
+    client._request_with_fallback_paths = AsyncMock(
+        side_effect=[
+            [{"success": False, "payload": "No connection found for identifier: 1:2"}],
+            [{"success": True, "payload": {"status": "Accepted"}}],
+        ]
+    )
+
+    response = await client.set_station_limit(
+        protocol="ocpp2.1",
+        station_id="2",
+        limit=7400.0,
+        unit="W",
+        evse_id=0,
+        duration=300,
+    )
+
+    assert isinstance(response, list)
+    assert response[0]["success"] is True
+    assert client._request_with_fallback_paths.await_count == 2
+    first_params = client._request_with_fallback_paths.await_args_list[0].kwargs["params"]
+    second_params = client._request_with_fallback_paths.await_args_list[1].kwargs["params"]
+    assert first_params["identifier"] == "2"
+    assert second_params["identifier"] == "10919352"

@@ -335,6 +335,18 @@ class CitrineClient:
             )
         except CitrineApiError as err:
             message = str(err).lower()
+            # Some deployments return DB-backed station ids in discovery while command routing
+            # expects the live OCPP identifier. Retry with discovered identifier candidates.
+            if "no connection found for identifier" in message:
+                retry_response = await self._retry_set_station_limit_with_alternate_identifiers(
+                    protocol=protocol,
+                    station_id=station_id,
+                    paths=paths,
+                    payload=payload,
+                )
+                if retry_response is not None:
+                    return retry_response
+
             # Common OCPP 1.6 quirk: connectorId 0 rejected, retry with connector 1.
             if protocol == "ocpp1.6" and evse_id == 0:
                 retry_payload = dict(payload)
@@ -401,6 +413,88 @@ class CitrineClient:
                     response=response,
                 )
             raise err
+
+    async def _retry_set_station_limit_with_alternate_identifiers(
+        self,
+        *,
+        protocol: str,
+        station_id: str,
+        paths: list[str],
+        payload: dict[str, Any],
+    ) -> Any | None:
+        """Retry set_station_limit with alternate identifiers discovered from station metadata."""
+        candidates = await self._station_identifier_candidates(station_id)
+        if not candidates:
+            return None
+
+        for candidate in candidates:
+            if candidate == str(station_id):
+                continue
+            try:
+                response = await self._request_with_fallback_paths(
+                    "POST",
+                    paths,
+                    params=self._identifier_params(candidate),
+                    json=payload,
+                )
+                validated = self._validate_command_response(
+                    action="set_station_limit",
+                    station_id=candidate,
+                    response=response,
+                )
+                _LOGGER.info(
+                    "set_station_limit identifier fallback succeeded: original=%s candidate=%s protocol=%s",
+                    station_id,
+                    candidate,
+                    protocol,
+                )
+                return validated
+            except CitrineApiError:
+                continue
+        return None
+
+    async def _station_identifier_candidates(self, station_id: str) -> list[str]:
+        """Find possible command identifiers for a station using REST discovery metadata."""
+        station_key = str(station_id)
+        stations = await self.get_charging_stations()
+        if not stations:
+            return []
+
+        candidates: list[str] = []
+        for station in stations:
+            if not isinstance(station, dict):
+                continue
+
+            keys_to_match = (
+                "id",
+                "identifier",
+                "stationId",
+                "chargingStationId",
+                "chargePointSerialNumber",
+            )
+            matched = any(
+                str(station.get(key)) == station_key
+                for key in keys_to_match
+                if station.get(key) is not None
+            )
+            if not matched:
+                continue
+
+            for key in (
+                "identifier",
+                "stationId",
+                "chargingStationId",
+                "chargePointSerialNumber",
+                "id",
+            ):
+                value = station.get(key)
+                if value is None:
+                    continue
+                candidate = str(value).strip()
+                if candidate and candidate not in candidates:
+                    candidates.append(candidate)
+
+        return candidates
 
     async def set_charging_profile(
         self,
