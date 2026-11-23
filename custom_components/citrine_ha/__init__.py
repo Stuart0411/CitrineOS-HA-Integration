@@ -682,6 +682,7 @@ def _station_record(coordinator: CitrineCoordinator, station_id: str) -> dict[st
             station.get("identifier"),
             station.get("stationId"),
             station.get("chargingStationId"),
+            station.get("chargePointSerialNumber"),
         ]
         if any(str(candidate) == station_key for candidate in candidates if candidate is not None):
             return station
@@ -693,7 +694,7 @@ def _station_command_identifier(coordinator: CitrineCoordinator, station_id: str
     if station is None:
         return str(station_id)
 
-    for key in ("identifier", "stationId", "chargingStationId", "id"):
+    for key in ("identifier", "stationId", "chargingStationId", "chargePointSerialNumber", "id"):
         value = station.get(key)
         if value is not None and str(value).strip():
             return str(value)

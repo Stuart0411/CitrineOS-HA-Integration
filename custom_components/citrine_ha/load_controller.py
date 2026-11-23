@@ -546,8 +546,9 @@ class CitrineLoadController:
         self.last_command_error = None
         try:
             _LOGGER.info(
-                "Dispatching load limit: station=%s protocol=%s limit=%.1fW",
+                "Dispatching load limit: station=%s command_identifier=%s protocol=%s limit=%.1fW",
                 st_ctx.station_id,
+                command_station_id,
                 protocol,
                 limit_w,
             )
@@ -584,9 +585,16 @@ class CitrineLoadController:
                 station.get("identifier"),
                 station.get("stationId"),
                 station.get("chargingStationId"),
+                station.get("chargePointSerialNumber"),
             )
             if any(str(candidate) == station_key for candidate in candidates if candidate is not None):
-                for key in ("identifier", "stationId", "chargingStationId", "id"):
+                for key in (
+                    "identifier",
+                    "stationId",
+                    "chargingStationId",
+                    "chargePointSerialNumber",
+                    "id",
+                ):
                     value = station.get(key)
                     if value is not None and str(value).strip():
                         return str(value)

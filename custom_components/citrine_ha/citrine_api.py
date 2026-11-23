@@ -457,8 +457,6 @@ class CitrineClient:
         """Find possible command identifiers for a station using REST discovery metadata."""
         station_key = str(station_id)
         stations = await self.get_charging_stations()
-        if not stations:
-            return []
 
         candidates: list[str] = []
         for station in stations:
@@ -488,6 +486,46 @@ class CitrineClient:
                 "id",
             ):
                 value = station.get(key)
+                if value is None:
+                    continue
+                candidate = str(value).strip()
+                if candidate and candidate not in candidates:
+                    candidates.append(candidate)
+
+        connectors = await self.get_connectors()
+        for connector in connectors:
+            if not isinstance(connector, dict):
+                continue
+
+            refs = (
+                connector.get("stationId"),
+                connector.get("chargingStationId"),
+                connector.get("identifier"),
+            )
+            if not any(str(ref) == station_key for ref in refs if ref is not None):
+                continue
+
+            for value in refs:
+                if value is None:
+                    continue
+                candidate = str(value).strip()
+                if candidate and candidate not in candidates:
+                    candidates.append(candidate)
+
+        transactions = await self.get_transactions(limit=200)
+        for tx in transactions:
+            if not isinstance(tx, dict):
+                continue
+
+            refs = (
+                tx.get("stationId"),
+                tx.get("chargingStationId"),
+                tx.get("identifier"),
+            )
+            if not any(str(ref) == station_key for ref in refs if ref is not None):
+                continue
+
+            for value in refs:
                 if value is None:
                     continue
                 candidate = str(value).strip()
