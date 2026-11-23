@@ -67,9 +67,11 @@ class CitrineClient:
         """Fetch charging stations directly from CitrineOS REST data endpoints."""
         params = {"tenantId": self._tenant_id}
         paths = [
+            # Prefer OCPP router view first: it is most likely to include the active
+            # command identifier used for websocket routing.
+            "/data/ocpprouter/chargingStation",
             "/data/configuration/chargingStation",
             "/data/chargingStation",
-            "/data/ocpprouter/chargingStation",
             "/data/monitoring/chargingStation",
             "/data/configuration/chargingStations",
             "/data/chargingStations",
@@ -425,7 +427,17 @@ class CitrineClient:
         """Retry set_station_limit with alternate identifiers discovered from station metadata."""
         candidates = await self._station_identifier_candidates(station_id)
         if not candidates:
+            _LOGGER.warning(
+                "set_station_limit identifier fallback found no alternate candidates for station=%s",
+                station_id,
+            )
             return None
+
+        _LOGGER.info(
+            "set_station_limit identifier fallback candidates for station=%s: %s",
+            station_id,
+            candidates,
+        )
 
         for candidate in candidates:
             if candidate == str(station_id):
@@ -531,6 +543,33 @@ class CitrineClient:
                 candidate = str(value).strip()
                 if candidate and candidate not in candidates:
                     candidates.append(candidate)
+
+        if not candidates:
+            # Last-resort: if there is exactly one online station with a clear identifier,
+            # prefer it over a known-bad DB id in single-station deployments.
+            online_identifiers: list[str] = []
+            for station in stations:
+                if not isinstance(station, dict):
+                    continue
+                is_online = station.get("isOnline")
+                if is_online is False:
+                    continue
+                for key in (
+                    "identifier",
+                    "stationId",
+                    "chargingStationId",
+                    "chargePointSerialNumber",
+                    "id",
+                ):
+                    value = station.get(key)
+                    if value is None:
+                        continue
+                    candidate = str(value).strip()
+                    if candidate and candidate not in online_identifiers:
+                        online_identifiers.append(candidate)
+
+            if len(online_identifiers) == 1:
+                candidates.append(online_identifiers[0])
 
         return candidates
 
