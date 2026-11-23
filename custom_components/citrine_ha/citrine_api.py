@@ -351,6 +351,30 @@ class CitrineClient:
                     response=response,
                 )
 
+            # Some OCPP 2.x chargers enforce station scope for ChargingStationMaxProfile.
+            # Retry with evseId=0 when backend rejects non-zero EVSE ids.
+            if (
+                protocol != "ocpp1.6"
+                and evse_id != 0
+                and "evseid" in message
+                and "shall be 0" in message
+            ):
+                retry_payload = {
+                    **payload,
+                    "evseId": 0,
+                }
+                response = await self._request_with_fallback_paths(
+                    "POST",
+                    paths,
+                    params=params,
+                    json=retry_payload,
+                )
+                return self._validate_command_response(
+                    action="set_station_limit",
+                    station_id=station_id,
+                    response=response,
+                )
+
             # Some stations reject W and only accept A in profile schedules.
             if protocol != "ocpp1.6" and normalized_unit == "W" and "chargingrateunit" in message:
                 retry_payload = {

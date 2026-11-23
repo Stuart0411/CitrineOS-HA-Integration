@@ -139,7 +139,7 @@ async def test_solar_tracking_charging_allocation(mock_controller_env):
         station_id="CS1",
         limit=2750.0,
         unit="W",
-        evse_id=1,
+        evse_id=0,
         duration=300,
     )
 

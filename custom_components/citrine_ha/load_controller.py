@@ -532,6 +532,10 @@ class CitrineLoadController:
     async def _apply_station_limit(self, st_ctx: StationLoadContext, limit_w: float) -> None:
         """Send charging limit to CitrineOS for a station."""
         protocol = self.coordinator.get_station_protocol(st_ctx.station_id, st_ctx.protocol) or "ocpp2.0.1"
+        normalized_protocol = self.client.normalize_protocol(protocol)
+        # OCPP 2.x station-wide caps (ChargingStationMaxProfile) are applied at station scope.
+        # Many chargers reject non-zero evseId for this purpose.
+        request_evse_id = st_ctx.evse_id if normalized_protocol == "ocpp1.6" else 0
         self.last_command_status = "pending"
         self.last_command_station_id = st_ctx.station_id
         self.last_command_limit_w = round(limit_w, 1)
@@ -549,7 +553,7 @@ class CitrineLoadController:
                 station_id=st_ctx.station_id,
                 limit=limit_w,
                 unit="W",
-                evse_id=st_ctx.evse_id,
+                evse_id=request_evse_id,
                 duration=300,
             )
             self.last_command_status = "accepted"
