@@ -35,7 +35,8 @@
           "ems_intent_mode": "EMS MQTT Intent Mode",
           "main_fuse_limit_w": "Main Grid Fuse Import Safety Limit (Watts)",
           "solar_start_buffer_w": "Solar Surplus Buffer (Watts)",
-          "site_phases": "Site Electrical Supply (1-Phase or 3-Phase)"
+          "site_phases": "Site Electrical Supply (1-Phase or 3-Phase)",
+          "station_identifier_overrides": "Station Identifier Overrides JSON (e.g. {\"2\":\"10919352\"})"
         }
       }
     },
@@ -72,6 +73,7 @@
           "min_dwell_secs": "Minimum State Dwell Time (seconds)",
           "site_id": "Site Identifier (for EMS MQTT topics & telemetry)",
           "mqtt_topic_prefix": "MQTT Intent Topic Prefix (e.g. citrine/ems)",
+          "station_identifier_overrides": "Station Identifier Overrides JSON (e.g. {\"2\":\"10919352\"})",
           "scan_interval": "Discovery Scan Interval (seconds)",
           "default_id_tag": "Default ID Tag",
           "default_evse_id": "Default EVSE ID"

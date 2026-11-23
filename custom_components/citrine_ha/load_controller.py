@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+import json
 import logging
 from typing import Any
 
@@ -39,6 +40,7 @@ from .const import (
     CONF_SITE_EXPORT_LIMIT_W,
     CONF_SITE_ID,
     CONF_SITE_PHASES,
+    CONF_STATION_IDENTIFIER_OVERRIDES,
     CONF_SOLAR_POWER_SENSOR,
     CONF_SOLAR_START_BUFFER_W,
     DEFAULT_BATTERY_MIN_SOC,
@@ -100,6 +102,10 @@ class CitrineLoadController:
             site_id=site_id,
             topic_prefix=topic_prefix,
             ttl_seconds=60,
+        )
+        self._station_identifier_overrides = self._parse_station_identifier_overrides(
+            entry.options.get(CONF_STATION_IDENTIFIER_OVERRIDES)
+            or entry.data.get(CONF_STATION_IDENTIFIER_OVERRIDES)
         )
 
         # Dynamic State Variables
@@ -575,8 +581,12 @@ class CitrineLoadController:
             self.last_error = f"Limit failed on {st_ctx.station_id}: {err}"
 
     def _resolve_command_station_id(self, station_id: str) -> str:
-        stations = self.coordinator.data.get("stations", []) if self.coordinator.data else []
         station_key = str(station_id)
+        override = self._station_identifier_overrides.get(station_key)
+        if override:
+            return override
+
+        stations = self.coordinator.data.get("stations", []) if self.coordinator.data else []
         for station in stations:
             if not isinstance(station, dict):
                 continue
@@ -600,6 +610,35 @@ class CitrineLoadController:
                         return str(value)
                 break
         return station_key
+
+    @staticmethod
+    def _parse_station_identifier_overrides(raw: Any) -> dict[str, str]:
+        if raw is None:
+            return {}
+
+        payload: Any = raw
+        if isinstance(raw, str):
+            text = raw.strip()
+            if not text:
+                return {}
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError:
+                _LOGGER.warning(
+                    "Invalid station_identifier_overrides JSON; expected object like {\"2\":\"10919352\"}"
+                )
+                return {}
+
+        if not isinstance(payload, dict):
+            return {}
+
+        overrides: dict[str, str] = {}
+        for key, value in payload.items():
+            key_s = str(key).strip()
+            value_s = str(value).strip() if value is not None else ""
+            if key_s and value_s:
+                overrides[key_s] = value_s
+        return overrides
 
     def _read_sensor_value(self, config_key: str, default: float | None = 0.0) -> float | None:
         entity_id = self.entry.options.get(config_key) or self.entry.data.get(config_key)

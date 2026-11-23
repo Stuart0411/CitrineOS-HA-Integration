@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -43,6 +44,7 @@ from .const import (
     CONF_HASURA_TOKEN,
     CONF_HASURA_URL,
     CONF_REQUEST_TIMEOUT,
+    CONF_STATION_IDENTIFIER_OVERRIDES,
     CONF_TENANT_ID,
     CONF_VERIFY_SSL,
     DEFAULT_DEFAULT_EVSE_ID,
@@ -166,7 +168,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         client: CitrineClient = ctx["client"]
 
         station_id = str(call.data[ATTR_STATION_ID])
-        command_station_id = _station_command_identifier(coordinator, station_id)
+        command_station_id = _station_command_identifier(ctx["entry"], coordinator, station_id)
         protocol = client.normalize_protocol(
             call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
         )
@@ -204,7 +206,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         client: CitrineClient = ctx["client"]
 
         station_id = str(call.data[ATTR_STATION_ID])
-        command_station_id = _station_command_identifier(coordinator, station_id)
+        command_station_id = _station_command_identifier(ctx["entry"], coordinator, station_id)
         protocol = client.normalize_protocol(
             call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
         )
@@ -230,7 +232,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         client: CitrineClient = ctx["client"]
 
         station_id = str(call.data[ATTR_STATION_ID])
-        command_station_id = _station_command_identifier(coordinator, station_id)
+        command_station_id = _station_command_identifier(ctx["entry"], coordinator, station_id)
         protocol = client.normalize_protocol(
             call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
         )
@@ -250,7 +252,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         client: CitrineClient = ctx["client"]
 
         station_id = str(call.data[ATTR_STATION_ID])
-        command_station_id = _station_command_identifier(coordinator, station_id)
+        command_station_id = _station_command_identifier(ctx["entry"], coordinator, station_id)
         protocol = client.normalize_protocol(
             call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
         )
@@ -357,7 +359,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         client: CitrineClient = ctx["client"]
 
         station_id = str(call.data[ATTR_STATION_ID])
-        command_station_id = _station_command_identifier(coordinator, station_id)
+        command_station_id = _station_command_identifier(ctx["entry"], coordinator, station_id)
         protocol = client.normalize_protocol(
             call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
         )
@@ -689,7 +691,16 @@ def _station_record(coordinator: CitrineCoordinator, station_id: str) -> dict[st
     return None
 
 
-def _station_command_identifier(coordinator: CitrineCoordinator, station_id: str) -> str:
+def _station_command_identifier(
+    entry: ConfigEntry,
+    coordinator: CitrineCoordinator,
+    station_id: str,
+) -> str:
+    overrides = _station_identifier_overrides(entry)
+    station_key = str(station_id)
+    if station_key in overrides:
+        return overrides[station_key]
+
     station = _station_record(coordinator, station_id)
     if station is None:
         return str(station_id)
@@ -699,3 +710,33 @@ def _station_command_identifier(coordinator: CitrineCoordinator, station_id: str
         if value is not None and str(value).strip():
             return str(value)
     return str(station_id)
+
+
+def _station_identifier_overrides(entry: ConfigEntry) -> dict[str, str]:
+    raw = entry.options.get(CONF_STATION_IDENTIFIER_OVERRIDES)
+    if raw is None:
+        raw = entry.data.get(CONF_STATION_IDENTIFIER_OVERRIDES)
+
+    if raw is None:
+        return {}
+
+    payload: Any = raw
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return {}
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            return {}
+
+    if not isinstance(payload, dict):
+        return {}
+
+    overrides: dict[str, str] = {}
+    for key, value in payload.items():
+        key_s = str(key).strip()
+        value_s = str(value).strip() if value is not None else ""
+        if key_s and value_s:
+            overrides[key_s] = value_s
+    return overrides

@@ -117,6 +117,7 @@ CONF_DEADBAND_W = "deadband_w"
 CONF_MIN_DWELL_SECS = "min_dwell_secs"
 CONF_SITE_ID = "site_id"
 CONF_MQTT_TOPIC_PREFIX = "mqtt_topic_prefix"
+CONF_STATION_IDENTIFIER_OVERRIDES = "station_identifier_overrides"
 
 # Controller Operation Modes
 MODE_OFF = "Off"

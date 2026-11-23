@@ -50,6 +50,7 @@ from .const import (
     CONF_SITE_EXPORT_LIMIT_W,
     CONF_SITE_ID,
     CONF_SITE_PHASES,
+    CONF_STATION_IDENTIFIER_OVERRIDES,
     CONF_SOLAR_POWER_SENSOR,
     CONF_SOLAR_START_BUFFER_W,
     CONF_TENANT_ID,
@@ -313,6 +314,13 @@ class CitrineConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
         )
 
+        schema[vol.Optional(
+            CONF_STATION_IDENTIFIER_OVERRIDES,
+            default=str(_val(CONF_STATION_IDENTIFIER_OVERRIDES, "")),
+        )] = selector.TextSelector(
+            selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+        )
+
         return vol.Schema(schema)
 
     async def _async_validate(self, data: dict[str, Any]) -> None:
@@ -487,6 +495,13 @@ class CitrineOptionsFlow(config_entries.OptionsFlow):
         schema[vol.Optional(
             CONF_MQTT_TOPIC_PREFIX,
             default=str(_val(CONF_MQTT_TOPIC_PREFIX, DEFAULT_MQTT_TOPIC_PREFIX)),
+        )] = selector.TextSelector(
+            selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+        )
+
+        schema[vol.Optional(
+            CONF_STATION_IDENTIFIER_OVERRIDES,
+            default=str(_val(CONF_STATION_IDENTIFIER_OVERRIDES, "")),
         )] = selector.TextSelector(
             selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
         )

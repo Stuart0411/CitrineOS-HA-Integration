@@ -19,6 +19,7 @@ from custom_components.citrine_ha.const import (
     CONF_RAMP_RATE_W_S,
     CONF_SITE_EXPORT_LIMIT_W,
     CONF_SITE_PHASES,
+    CONF_STATION_IDENTIFIER_OVERRIDES,
     CONF_SOLAR_POWER_SENSOR,
     CONF_SOLAR_START_BUFFER_W,
     MODE_DYNAMIC_DOE,
@@ -343,6 +344,38 @@ async def test_station_command_identifier_prefers_runtime_identifier(mock_contro
     controller, hass, client = mock_controller_env
     controller.coordinator.data["stations"][0]["id"] = "2"
     controller.coordinator.data["stations"][0]["identifier"] = "10919352"
+
+    def get_state(entity_id):
+        state = MagicMock()
+        if entity_id == "sensor.grid_power":
+            state.state = "-3000.0"
+        else:
+            state.state = "0.0" if entity_id != "sensor.battery_soc" else "80.0"
+        return state
+
+    hass.states.get.side_effect = get_state
+    await controller.async_recompute()
+
+    client.set_station_limit.assert_called_with(
+        protocol="ocpp2.0.1",
+        station_id="10919352",
+        limit=2750.0,
+        unit="W",
+        evse_id=0,
+        duration=300,
+    )
+
+
+@pytest.mark.asyncio
+async def test_station_command_identifier_manual_override_wins(mock_controller_env):
+    """Manual station identifier override must take precedence over discovered metadata."""
+    controller, hass, client = mock_controller_env
+    controller.entry.options[CONF_STATION_IDENTIFIER_OVERRIDES] = '{"2":"10919352"}'
+    controller._station_identifier_overrides = controller._parse_station_identifier_overrides(
+        controller.entry.options[CONF_STATION_IDENTIFIER_OVERRIDES]
+    )
+    controller.coordinator.data["stations"][0]["id"] = "2"
+    controller.coordinator.data["stations"][0]["identifier"] = "SN2507190633"
 
     def get_state(entity_id):
         state = MagicMock()
