@@ -337,3 +337,31 @@ async def test_export_is_surplus_and_does_not_inflate_site_headroom(mock_control
     assert controller.site_headroom_w == 14400.0
 
 
+@pytest.mark.asyncio
+async def test_station_command_identifier_prefers_runtime_identifier(mock_controller_env):
+    """Controller should dispatch using station runtime identifier when station id is DB-backed."""
+    controller, hass, client = mock_controller_env
+    controller.coordinator.data["stations"][0]["id"] = "2"
+    controller.coordinator.data["stations"][0]["identifier"] = "10919352"
+
+    def get_state(entity_id):
+        state = MagicMock()
+        if entity_id == "sensor.grid_power":
+            state.state = "-3000.0"
+        else:
+            state.state = "0.0" if entity_id != "sensor.battery_soc" else "80.0"
+        return state
+
+    hass.states.get.side_effect = get_state
+    await controller.async_recompute()
+
+    client.set_station_limit.assert_called_with(
+        protocol="ocpp2.0.1",
+        station_id="10919352",
+        limit=2750.0,
+        unit="W",
+        evse_id=0,
+        duration=300,
+    )
+
+

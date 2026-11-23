@@ -165,7 +165,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         coordinator = ctx["coordinator"]
         client: CitrineClient = ctx["client"]
 
-        station_id = call.data[ATTR_STATION_ID]
+        station_id = str(call.data[ATTR_STATION_ID])
+        command_station_id = _station_command_identifier(coordinator, station_id)
         protocol = client.normalize_protocol(
             call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
         )
@@ -191,7 +192,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
         await client.request_start_transaction(
             protocol=protocol,
-            station_id=station_id,
+            station_id=command_station_id,
             id_tag=id_tag,
             evse_id=evse_id,
             remote_start_id=remote_start_id,
@@ -202,7 +203,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         coordinator = ctx["coordinator"]
         client: CitrineClient = ctx["client"]
 
-        station_id = call.data[ATTR_STATION_ID]
+        station_id = str(call.data[ATTR_STATION_ID])
+        command_station_id = _station_command_identifier(coordinator, station_id)
         protocol = client.normalize_protocol(
             call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
         )
@@ -218,7 +220,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
         await client.request_stop_transaction(
             protocol=protocol,
-            station_id=station_id,
+            station_id=command_station_id,
             transaction_id=str(transaction_id),
         )
 
@@ -227,14 +229,15 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         coordinator = ctx["coordinator"]
         client: CitrineClient = ctx["client"]
 
-        station_id = call.data[ATTR_STATION_ID]
+        station_id = str(call.data[ATTR_STATION_ID])
+        command_station_id = _station_command_identifier(coordinator, station_id)
         protocol = client.normalize_protocol(
             call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
         )
 
         await client.set_station_limit(
             protocol=protocol,
-            station_id=station_id,
+            station_id=command_station_id,
             limit=float(call.data[ATTR_LIMIT]),
             unit=str(call.data.get(ATTR_UNIT, "W")),
             evse_id=int(call.data.get(ATTR_EVSE_ID, 0)),
@@ -246,7 +249,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         coordinator = ctx["coordinator"]
         client: CitrineClient = ctx["client"]
 
-        station_id = call.data[ATTR_STATION_ID]
+        station_id = str(call.data[ATTR_STATION_ID])
+        command_station_id = _station_command_identifier(coordinator, station_id)
         protocol = client.normalize_protocol(
             call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
         )
@@ -331,7 +335,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
         await client.set_charging_profile(
             protocol=protocol,
-            station_id=station_id,
+            station_id=command_station_id,
             limit=limit_value,
             setpoint=requested_setpoint,
             discharge_limit=requested_discharge_limit,
@@ -352,14 +356,15 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         coordinator = ctx["coordinator"]
         client: CitrineClient = ctx["client"]
 
-        station_id = call.data[ATTR_STATION_ID]
+        station_id = str(call.data[ATTR_STATION_ID])
+        command_station_id = _station_command_identifier(coordinator, station_id)
         protocol = client.normalize_protocol(
             call.data.get(ATTR_PROTOCOL) or _station_protocol(coordinator, station_id)
         )
 
         await client.clear_charging_profile(
             protocol=protocol,
-            station_id=station_id,
+            station_id=command_station_id,
             evse_id=int(call.data.get(ATTR_EVSE_ID, 0)),
             profile_id=call.data.get(ATTR_PROFILE_ID),
             stack_level=call.data.get(ATTR_STACK_LEVEL),
@@ -670,7 +675,26 @@ def _consume_next_remote_start_id(
 
 def _station_record(coordinator: CitrineCoordinator, station_id: str) -> dict[str, Any] | None:
     stations = coordinator.data.get("stations", []) if coordinator.data else []
+    station_key = str(station_id)
     for station in stations:
-        if str(station.get("id")) == str(station_id):
+        candidates = [
+            station.get("id"),
+            station.get("identifier"),
+            station.get("stationId"),
+            station.get("chargingStationId"),
+        ]
+        if any(str(candidate) == station_key for candidate in candidates if candidate is not None):
             return station
     return None
+
+
+def _station_command_identifier(coordinator: CitrineCoordinator, station_id: str) -> str:
+    station = _station_record(coordinator, station_id)
+    if station is None:
+        return str(station_id)
+
+    for key in ("identifier", "stationId", "chargingStationId", "id"):
+        value = station.get(key)
+        if value is not None and str(value).strip():
+            return str(value)
+    return str(station_id)

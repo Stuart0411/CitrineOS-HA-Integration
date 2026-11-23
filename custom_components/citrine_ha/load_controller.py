@@ -536,6 +536,9 @@ class CitrineLoadController:
         # OCPP 2.x station-wide caps (ChargingStationMaxProfile) are applied at station scope.
         # Many chargers reject non-zero evseId for this purpose.
         request_evse_id = st_ctx.evse_id if normalized_protocol == "ocpp1.6" else 0
+        command_station_id = self._resolve_command_station_id(st_ctx.station_id)
+        # Normalize to whole watts for strict multipleOf(0.1) validators.
+        request_limit_w = float(round(limit_w))
         self.last_command_status = "pending"
         self.last_command_station_id = st_ctx.station_id
         self.last_command_limit_w = round(limit_w, 1)
@@ -550,8 +553,8 @@ class CitrineLoadController:
             )
             await self.client.set_station_limit(
                 protocol=protocol,
-                station_id=st_ctx.station_id,
-                limit=limit_w,
+                station_id=command_station_id,
+                limit=request_limit_w,
                 unit="W",
                 evse_id=request_evse_id,
                 duration=300,
@@ -569,6 +572,26 @@ class CitrineLoadController:
             self.last_command_timestamp = datetime.now(UTC).isoformat()
             self.last_command_error = str(err)[:300]
             self.last_error = f"Limit failed on {st_ctx.station_id}: {err}"
+
+    def _resolve_command_station_id(self, station_id: str) -> str:
+        stations = self.coordinator.data.get("stations", []) if self.coordinator.data else []
+        station_key = str(station_id)
+        for station in stations:
+            if not isinstance(station, dict):
+                continue
+            candidates = (
+                station.get("id"),
+                station.get("identifier"),
+                station.get("stationId"),
+                station.get("chargingStationId"),
+            )
+            if any(str(candidate) == station_key for candidate in candidates if candidate is not None):
+                for key in ("identifier", "stationId", "chargingStationId", "id"):
+                    value = station.get(key)
+                    if value is not None and str(value).strip():
+                        return str(value)
+                break
+        return station_key
 
     def _read_sensor_value(self, config_key: str, default: float | None = 0.0) -> float | None:
         entity_id = self.entry.options.get(config_key) or self.entry.data.get(config_key)
