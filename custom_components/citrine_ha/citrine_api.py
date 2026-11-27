@@ -78,7 +78,7 @@ class CitrineClient:
             "/data/chargingStations",
         ]
         try:
-            resp = await self._request_with_fallback_paths("GET", paths, params=params)
+            resp = await self._request_with_fallback_paths("GET", paths=paths, params=params)
             return self._extract_items_from_response(resp)
         except CitrineApiError as err:
             _LOGGER.debug("REST charging stations query failed: %s", err)
@@ -100,7 +100,7 @@ class CitrineClient:
             "/data/connectors",
         ]
         try:
-            resp = await self._request_with_fallback_paths("GET", paths, params=params)
+            resp = await self._request_with_fallback_paths("GET", paths=paths, params=params)
             return self._extract_items_from_response(resp)
         except CitrineApiError as err:
             _LOGGER.debug("REST connectors query failed: %s", err)
@@ -116,7 +116,7 @@ class CitrineClient:
             "/data/transaction",
         ]
         try:
-            resp = await self._request_with_fallback_paths("GET", paths, params=params)
+            resp = await self._request_with_fallback_paths("GET", paths=paths, params=params)
             return self._extract_items_from_response(resp)
         except CitrineApiError as err:
             _LOGGER.debug("REST transactions query failed: %s", err)
@@ -169,6 +169,45 @@ class CitrineClient:
             f"/data/{clean_prefix}/emsIntakeTelemetry",
             params=params,
         )
+
+    async def get_ems_effective_control_summary(
+        self,
+        *,
+        site_id: str | None = None,
+        limit: int = 500,
+        endpoint_prefix: str = "ems",
+    ) -> list[dict[str, Any]]:
+        """Fetch latest EMS effective-control summary for one or more sites."""
+        params: dict[str, Any] = {
+            "tenantId": self._tenant_id,
+            "limit": max(1, min(int(limit), 2000)),
+        }
+        if site_id:
+            params["siteId"] = site_id
+
+        clean_prefix = str(endpoint_prefix or "ems").strip("/")
+        response = await self._request(
+            "GET",
+            f"/data/{clean_prefix}/emsEffectiveControlSummary",
+            params=params,
+        )
+        return self._extract_items_from_response(response)
+
+    async def create_ems_site_intent(
+        self,
+        *,
+        intent_payload: dict[str, Any],
+        endpoint_prefix: str = "ems",
+    ) -> dict[str, Any]:
+        """Submit native EMS site intent via Data API for non-MQTT or fallback paths."""
+        clean_prefix = str(endpoint_prefix or "ems").strip("/")
+        response = await self._request(
+            "POST",
+            f"/data/{clean_prefix}/emsSiteIntent",
+            params={"tenantId": self._tenant_id},
+            json=intent_payload,
+        )
+        return response if isinstance(response, dict) else {}
 
     async def request_start_transaction(
         self,
@@ -500,7 +539,6 @@ class CitrineClient:
                 "stationId",
                 "chargingStationId",
                 "chargePointSerialNumber",
-                "id",
             ):
                 value = station.get(key)
                 if value is None:
@@ -508,6 +546,9 @@ class CitrineClient:
                 candidate = str(value).strip()
                 if candidate and candidate not in candidates:
                     candidates.append(candidate)
+
+        if any(candidate != station_key for candidate in candidates):
+            return candidates
 
         connectors = await self.get_connectors()
         for connector in connectors:
@@ -529,6 +570,9 @@ class CitrineClient:
                 if candidate and candidate not in candidates:
                     candidates.append(candidate)
 
+        if any(candidate != station_key for candidate in candidates):
+            return candidates
+
         transactions = await self.get_transactions(limit=200)
         for tx in transactions:
             if not isinstance(tx, dict):
@@ -549,7 +593,7 @@ class CitrineClient:
                 if candidate and candidate not in candidates:
                     candidates.append(candidate)
 
-        if not candidates:
+        if not any(candidate != station_key for candidate in candidates):
             # Last-resort: derive a global candidate pool from all discovery feeds.
             # This rescues deployments where station references differ between endpoints.
             pool: list[str] = []
@@ -562,7 +606,6 @@ class CitrineClient:
                     "stationId",
                     "chargingStationId",
                     "chargePointSerialNumber",
-                    "id",
                 ):
                     value = station.get(key)
                     if value is None:

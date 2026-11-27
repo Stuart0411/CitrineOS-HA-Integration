@@ -71,10 +71,15 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         tenant_id = int(self._entry_data[CONF_TENANT_ID])
         intake_telemetry = await self._fetch_intake_telemetry_with_fallback(tenant_id)
+        effective_control = await self._fetch_effective_control_with_fallback(tenant_id)
 
         # 1. Try Hasura discovery if configured
         if self._hasura_client:
-            hasura_payload = await self._try_hasura_discovery(tenant_id, intake_telemetry)
+            hasura_payload = await self._try_hasura_discovery(
+                tenant_id,
+                intake_telemetry,
+                effective_control,
+            )
             if hasura_payload and hasura_payload.get("stations"):
                 return hasura_payload
             _LOGGER.debug("Hasura discovery returned no stations or failed; falling back to direct CitrineOS REST discovery")
@@ -98,6 +103,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "connectors": rest_connectors,
                     "transactions": rest_transactions,
                     "intake_telemetry": intake_telemetry,
+                    "effective_control": effective_control,
                     "source": "citrine_rest",
                 }
         except Exception as err:  # noqa: BLE001
@@ -116,14 +122,20 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return {
                     **self.data,
                     "intake_telemetry": intake_telemetry,
+                    "effective_control": effective_control,
                 }
 
-        return self._fallback_discovery_payload(intake_telemetry, "No charging stations discovered via Hasura or Citrine REST")
+        return self._fallback_discovery_payload(
+            intake_telemetry,
+            effective_control,
+            "No charging stations discovered via Hasura or Citrine REST",
+        )
 
     async def _try_hasura_discovery(
         self,
         tenant_id: int,
         intake_telemetry: dict[str, Any],
+        effective_control: dict[str, Any],
     ) -> dict[str, Any] | None:
         """Execute Hasura GraphQL discovery query with automatic schema adaptation."""
         if not self._hasura_client:
@@ -175,6 +187,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         "connectors": connectors,
                         "transactions": [],
                         "intake_telemetry": intake_telemetry,
+                        "effective_control": effective_control,
                         "source": "hasura_minimal",
                         "hasura_url": self._entry_data.get(CONF_HASURA_URL),
                         "hasura_error": message,
@@ -197,6 +210,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "connectors": connectors,
                 "transactions": transactions,
                 "intake_telemetry": intake_telemetry,
+                "effective_control": effective_control,
                 "source": "hasura",
                 "hasura_url": self._entry_data.get(CONF_HASURA_URL),
             }
@@ -205,6 +219,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _fallback_discovery_payload(
         self,
         intake_telemetry: dict[str, Any],
+        effective_control: dict[str, Any],
         message: str,
     ) -> dict[str, Any]:
         previous = self.data or {}
@@ -219,6 +234,7 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "connectors": connectors,
             "transactions": transactions,
             "intake_telemetry": intake_telemetry,
+            "effective_control": effective_control,
             "source": "hasura_error",
             "hasura_url": self._entry_data.get(CONF_HASURA_URL),
             "hasura_error": message,
@@ -266,6 +282,24 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         current["intake_telemetry"] = intake_telemetry
         self.async_set_updated_data(current)
         return intake_telemetry
+
+    async def async_refresh_effective_control(
+        self,
+        site_id: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        """Refresh only EMS effective-control summary and push coordinator update."""
+        tenant_id = int(self._entry_data[CONF_TENANT_ID])
+        effective_control = await self._fetch_effective_control_with_fallback(
+            tenant_id,
+            site_id=site_id,
+            limit=limit,
+        )
+
+        current = dict(self.data or {})
+        current["effective_control"] = effective_control
+        self.async_set_updated_data(current)
+        return effective_control
 
     def clear_intake_telemetry_error(self) -> None:
         """Clear cached telemetry error without forcing a refetch."""
@@ -376,6 +410,89 @@ class CitrineCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.warning("EMS intake telemetry unavailable: %s", err)
 
         return intake_telemetry
+
+    def _effective_control_defaults(self, tenant_id: int, site_id: str | None) -> dict[str, Any]:
+        return {
+            "tenantId": tenant_id,
+            "siteId": site_id,
+            "latestCreatedAt": None,
+            "latestIntentMessageId": None,
+            "latestDecisionType": None,
+            "effectiveControl": {},
+            "stations": [],
+            "fetchedAt": None,
+            "lastSuccessAt": None,
+            "error": None,
+            "limit": 0,
+            "staleAfterSeconds": self.telemetry_stale_after_seconds(),
+        }
+
+    async def _fetch_effective_control_with_fallback(
+        self,
+        tenant_id: int,
+        *,
+        site_id: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        fetched_at = datetime.now(UTC).isoformat()
+        endpoint_prefix = str(
+            self._entry_options.get(CONF_EMS_ENDPOINT_PREFIX, DEFAULT_EMS_ENDPOINT_PREFIX)
+            or DEFAULT_EMS_ENDPOINT_PREFIX
+        )
+        scoped_site_id = self._telemetry_scope_site(site_id)
+        scoped_limit = self._telemetry_scope_limit(limit)
+
+        effective_control = self._effective_control_defaults(tenant_id, scoped_site_id)
+        previous_last_success = None
+        if self.data and isinstance(self.data.get("effective_control"), dict):
+            previous_last_success = self.data["effective_control"].get("lastSuccessAt")
+
+        effective_control["fetchedAt"] = fetched_at
+        effective_control["lastSuccessAt"] = previous_last_success
+        effective_control["limit"] = scoped_limit
+
+        try:
+            summaries = await self._citrine_client.get_ems_effective_control_summary(
+                endpoint_prefix=endpoint_prefix,
+                site_id=scoped_site_id,
+                limit=scoped_limit,
+            )
+            selected_summary = summaries[0] if summaries else {}
+            if scoped_site_id:
+                selected_summary = next(
+                    (
+                        item
+                        for item in summaries
+                        if str(item.get("siteId") or "") == scoped_site_id
+                    ),
+                    selected_summary,
+                )
+
+            effective_control = {
+                **effective_control,
+                "siteId": selected_summary.get("siteId", scoped_site_id),
+                "latestCreatedAt": selected_summary.get("latestCreatedAt"),
+                "latestIntentMessageId": selected_summary.get("latestIntentMessageId"),
+                "latestDecisionType": selected_summary.get("latestDecisionType"),
+                "effectiveControl": selected_summary.get("effectiveControl", {}),
+                "stations": selected_summary.get("stations", []),
+                "fetchedAt": fetched_at,
+                "lastSuccessAt": fetched_at,
+                "error": None,
+            }
+        except CitrineApiError as err:
+            error_message = str(err)
+            effective_control["error"] = error_message
+            if "failed (404)" in error_message and "emsEffectiveControlSummary" in error_message:
+                _LOGGER.info(
+                    "EMS effective control endpoint unavailable (404). "
+                    "Check Citrine EMS module enablement and ems_endpoint_prefix. %s",
+                    err,
+                )
+            else:
+                _LOGGER.warning("EMS effective control summary unavailable: %s", err)
+
+        return effective_control
 
     def get_station_protocol(self, station_id: str, fallback: str | None = None) -> str | None:
         station_key = str(station_id)

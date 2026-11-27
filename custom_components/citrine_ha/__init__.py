@@ -16,19 +16,27 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .citrine_api import CitrineApiError, CitrineClient
 from .const import (
+    ATTR_EV_CHARGE_BUDGET_W,
+    ATTR_EV_DISCHARGE_BUDGET_W,
     ATTR_DURATION,
     ATTR_ENTRY_ID,
+    ATTR_INTENT_CLASS,
     ATTR_DISCHARGE_LIMIT,
     ATTR_EVSE_ID,
     ATTR_GROUP_ID,
     ATTR_ID_TAG,
     ATTR_LIMIT,
+    ATTR_MAX_EXPORT_W,
+    ATTR_MAX_IMPORT_W,
     ATTR_PROFILE_ID,
+    ATTR_PRIORITY_BAND,
+    ATTR_REASON,
     ATTR_OPERATION_MODE,
     ATTR_PROFILE_PERIODS,
     ATTR_PROFILE_KIND,
     ATTR_PROFILE_PURPOSE,
     ATTR_PROTOCOL,
+    ATTR_SEQUENCE_NUMBER,
     ATTR_STACK_LEVEL,
     ATTR_STATION_ID,
     ATTR_STATION_IDS,
@@ -51,6 +59,7 @@ from .const import (
     DEFAULT_DEFAULT_EVSE_ID,
     DEFAULT_DEFAULT_ID_TAG,
     DOMAIN,
+    EMS_INTENT_CLASSES,
     MODE_EMERGENCY_SAFE,
     PLATFORMS,
     SERVICE_CLEAR_CHARGING_PROFILE,
@@ -63,6 +72,7 @@ from .const import (
     SERVICE_SET_STATION_LIMIT,
     SERVICE_START_CHARGING,
     SERVICE_STOP_CHARGING,
+    SERVICE_SUBMIT_EMS_INTENT,
     SERVICE_SYNC_DISCOVERY_NOW,
     SERVICE_SYNC_EMS_TELEMETRY_NOW,
 )
@@ -434,6 +444,82 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         controller: CitrineLoadController = ctx["controller"]
         controller.set_mode(MODE_EMERGENCY_SAFE)
 
+    async def async_handle_submit_ems_intent(call: ServiceCall) -> None:
+        ctx = _resolve_context(hass, call)
+        controller: CitrineLoadController = ctx["controller"]
+        client: CitrineClient = ctx["client"]
+        entry = ctx["entry"]
+
+        intent_class = str(call.data.get(ATTR_INTENT_CLASS, "optimization_setpoint"))
+        reason = str(call.data.get(ATTR_REASON, "Manual HA intent"))
+        priority_band = call.data.get(ATTR_PRIORITY_BAND)
+        sequence_number = call.data.get(ATTR_SEQUENCE_NUMBER)
+
+        site_id = str(
+            call.data.get(ATTR_SITE_ID)
+            or entry.options.get("site_id")
+            or entry.data.get("site_id")
+            or controller.mqtt_publisher.site_id
+        )
+        max_import_w = float(call.data.get(ATTR_MAX_IMPORT_W, controller.site_headroom_w or 0.0))
+        max_export_w = float(call.data.get(ATTR_MAX_EXPORT_W, 0.0))
+        ev_charge_budget_w = float(
+            call.data.get(ATTR_EV_CHARGE_BUDGET_W, controller.allocated_ev_power_w or 0.0)
+        )
+        ev_discharge_budget_w = float(call.data.get(ATTR_EV_DISCHARGE_BUDGET_W, 0.0))
+
+        payload = controller.mqtt_publisher.build_intent_payload(
+            operation_mode=controller.ems_intent_mode,
+            reason=reason,
+            max_import_power_w=max_import_w,
+            max_export_power_w=max_export_w,
+            allocated_ev_power_w=ev_charge_budget_w,
+            solar_surplus_w=controller.solar_surplus_w,
+            site_headroom_w=controller.site_headroom_w,
+            allocations=[],
+            intent_class=intent_class,
+            priority_band=int(priority_band) if priority_band is not None else None,
+            sequence_number=int(sequence_number) if sequence_number is not None else None,
+            metadata_control={
+                "sourceSystem": "home-assistant",
+                "sourceComponent": "service.submit_ems_intent",
+                "userInitiated": True,
+            },
+        )
+        payload["siteId"] = site_id
+        payload.setdefault("constraints", {})["evDischargeBudgetW"] = round(
+            ev_discharge_budget_w,
+            1,
+        )
+
+        mqtt_ok = await controller.mqtt_publisher.async_publish_intent(
+            operation_mode=controller.ems_intent_mode,
+            reason=reason,
+            max_import_power_w=max_import_w,
+            max_export_power_w=max_export_w,
+            allocated_ev_power_w=ev_charge_budget_w,
+            solar_surplus_w=controller.solar_surplus_w,
+            site_headroom_w=controller.site_headroom_w,
+            allocations=[],
+            intent_class=intent_class,
+            priority_band=int(priority_band) if priority_band is not None else None,
+            sequence_number=int(sequence_number) if sequence_number is not None else None,
+            metadata_control={
+                "sourceSystem": "home-assistant",
+                "sourceComponent": "service.submit_ems_intent",
+                "userInitiated": True,
+            },
+        )
+        if not mqtt_ok:
+            await client.create_ems_site_intent(
+                intent_payload=payload,
+                endpoint_prefix=str(
+                    entry.options.get("ems_endpoint_prefix")
+                    or entry.data.get("ems_endpoint_prefix")
+                    or "ems"
+                ),
+            )
+
     _register(
         SERVICE_SET_CONTROLLER_MODE,
         async_handle_set_controller_mode,
@@ -455,6 +541,33 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         SERVICE_EMERGENCY_SAFE_MODE,
         async_handle_emergency_safe_mode,
         vol.Schema({vol.Optional(ATTR_ENTRY_ID): str}),
+    )
+
+    _register(
+        SERVICE_SUBMIT_EMS_INTENT,
+        async_handle_submit_ems_intent,
+        vol.Schema(
+            {
+                vol.Optional(ATTR_ENTRY_ID): str,
+                vol.Optional(ATTR_SITE_ID): str,
+                vol.Optional(ATTR_INTENT_CLASS, default="optimization_setpoint"): vol.In(
+                    EMS_INTENT_CLASSES
+                ),
+                vol.Optional(ATTR_REASON, default="Manual HA intent"): str,
+                vol.Optional(ATTR_PRIORITY_BAND): vol.All(
+                    vol.Coerce(int),
+                    vol.Range(min=0, max=100),
+                ),
+                vol.Optional(ATTR_SEQUENCE_NUMBER): vol.All(
+                    vol.Coerce(int),
+                    vol.Range(min=0),
+                ),
+                vol.Optional(ATTR_MAX_IMPORT_W): vol.Coerce(float),
+                vol.Optional(ATTR_MAX_EXPORT_W): vol.Coerce(float),
+                vol.Optional(ATTR_EV_CHARGE_BUDGET_W): vol.Coerce(float),
+                vol.Optional(ATTR_EV_DISCHARGE_BUDGET_W): vol.Coerce(float),
+            }
+        ),
     )
 
     _register(
