@@ -78,6 +78,7 @@ Selectable on the fly via `select.citrine_controller_mode`:
 * `citrine_ha.start_charging` / `citrine_ha.stop_charging` — Remote transaction controls.
 * `citrine_ha.set_station_limit` / `citrine_ha.set_group_limit` — Set static limits.
 * `citrine_ha.set_charging_profile` / `citrine_ha.clear_charging_profile` — Advanced OCPP profile dispatch.
+* `citrine_ha.submit_ems_intent` — Manually submit EMS site intent class (`hard_limit`, `site_cap`, `priority_boost`, `optimization_setpoint`) with optional priority/sequence hints.
 
 ---
 
@@ -129,6 +130,7 @@ A pre-configured Lovelace dashboard view is available in [assets/dashboard.yaml]
 - `citrine_ha.sync_discovery_now`
 - `citrine_ha.sync_ems_telemetry_now`
 - `citrine_ha.clear_ems_telemetry_error`
+- `citrine_ha.submit_ems_intent`
 
 Bidirectional note:
 - `set_charging_profile` supports negative `limit` values for stations that advertise bidirectional profile support in the integration capability cache (typically OCPP 2.x).
@@ -156,6 +158,9 @@ Bidirectional note:
 - EMS profile-control entities are now guarded by the same CSMS-facing support rules used by the EMS policy slice
 - If a charger is ineligible for EMS profile control, the `EMS Profile Eligibility` diagnostic sensor exposes the exact support reason and the profile-control entities are unavailable in HA
 - EMS telemetry consumption via Citrine Data API endpoint `GET /data/<ems-endpoint-prefix>/emsIntakeTelemetry`
+- EMS effective-control visibility via Citrine Data API endpoint `GET /data/<ems-endpoint-prefix>/emsEffectiveControlSummary`
+- EMS intent hierarchy metadata is published with each HA envelope (`intentClass`, `priorityBand`, `sequenceNumber`) so CSIP/Aus grid caps and user optimization preferences are explicit inputs to EMS arbitration
+- EMS intent transport supports MQTT-first publish with REST fallback to `POST /data/<ems-endpoint-prefix>/emsSiteIntent` when MQTT is unavailable
 - Options now support `ems_endpoint_prefix`, `ems_telemetry_site_id`, and `ems_telemetry_limit` for telemetry scoping
 - Options now support `ems_telemetry_stale_secs` for telemetry stale detection threshold
 - `sync_ems_telemetry_now` also supports optional per-call overrides for `site_id` and `telemetry_limit`

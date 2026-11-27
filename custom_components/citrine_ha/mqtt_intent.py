@@ -56,6 +56,10 @@ class MqttIntentPublisher:
         solar_surplus_w: float,
         site_headroom_w: float,
         allocations: list[dict[str, Any]],
+        intent_class: str = "optimization_setpoint",
+        priority_band: int | None = None,
+        sequence_number: int | None = None,
+        metadata_control: dict[str, Any] | None = None,
         fallback_limit_w: float = 1380.0,
     ) -> bool:
         """
@@ -67,6 +71,85 @@ class MqttIntentPublisher:
             self.last_error = "MQTT integration not available in Home Assistant"
             return False
 
+        payload = self.build_intent_payload(
+            operation_mode=operation_mode,
+            reason=reason,
+            max_import_power_w=max_import_power_w,
+            max_export_power_w=max_export_power_w,
+            allocated_ev_power_w=allocated_ev_power_w,
+            solar_surplus_w=solar_surplus_w,
+            site_headroom_w=site_headroom_w,
+            allocations=allocations,
+            intent_class=intent_class,
+            priority_band=priority_band,
+            sequence_number=sequence_number,
+            metadata_control=metadata_control,
+            fallback_limit_w=fallback_limit_w,
+        )
+
+        payload_str = json.dumps(payload)
+        publish_data = {
+            "topic": self.intent_topic,
+            "payload": payload_str,
+            "retain": False,
+            "qos": 0,
+        }
+
+        self.last_attempt_count = 0
+        last_error: Exception | None = None
+        for attempt in range(1, 4):
+            self.last_attempt_count = attempt
+            try:
+                await self.hass.services.async_call(
+                    "mqtt",
+                    "publish",
+                    publish_data,
+                    blocking=True,
+                )
+                self.last_published_at = str(payload.get("createdAt"))
+                self.publish_count += 1
+                self.last_publish_success = True
+                self.last_error = None
+                _LOGGER.debug(
+                    "Published EMS site intent to %s (attempt=%s allocated=%.1fW stations=%d)",
+                    self.intent_topic,
+                    attempt,
+                    allocated_ev_power_w,
+                    len(allocations),
+                )
+                return True
+            except Exception as err:  # noqa: BLE001
+                last_error = err
+                _LOGGER.warning(
+                    "MQTT intent publish failed (attempt=%s/3) to %s: %s",
+                    attempt,
+                    self.intent_topic,
+                    err,
+                )
+
+        self.publish_failure_count += 1
+        self.last_publish_success = False
+        self.last_error = str(last_error) if last_error else "Unknown MQTT publish failure"
+        return False
+
+    def build_intent_payload(
+        self,
+        *,
+        operation_mode: str,
+        reason: str,
+        max_import_power_w: float,
+        max_export_power_w: float,
+        allocated_ev_power_w: float,
+        solar_surplus_w: float,
+        site_headroom_w: float,
+        allocations: list[dict[str, Any]],
+        intent_class: str = "optimization_setpoint",
+        priority_band: int | None = None,
+        sequence_number: int | None = None,
+        metadata_control: dict[str, Any] | None = None,
+        fallback_limit_w: float = 1380.0,
+    ) -> dict[str, Any]:
+        """Build a native EMS site-intent payload used by both MQTT and REST paths."""
         now = datetime.now(UTC)
         now_iso = self._format_utc(now)
         expires_iso = self._format_utc(now + timedelta(seconds=self.ttl_seconds))
@@ -75,7 +158,19 @@ class MqttIntentPublisher:
             float(allocation.get("dischargeLimitW", 0) or 0) > 0
             for allocation in allocations
         )
-        payload = {
+
+        normalized_priority = (
+            max(0, min(int(priority_band), 100)) if priority_band is not None else None
+        )
+        normalized_sequence = max(0, int(sequence_number)) if sequence_number is not None else 0
+
+        control_metadata = dict(metadata_control or {})
+        control_metadata.setdefault("intentClass", intent_class)
+        control_metadata.setdefault("priorityBand", normalized_priority)
+        control_metadata.setdefault("sequenceNumber", normalized_sequence)
+        control_metadata.setdefault("authority", "ems-single-clamp")
+
+        return {
             # Native CitrineOS EMS intent contract.
             "messageId": str(uuid4()),
             "siteId": self.site_id,
@@ -101,6 +196,8 @@ class MqttIntentPublisher:
                 "emergencyCurtailment": ems_mode == "Idle",
             },
             "reason": reason,
+            "priorityBand": normalized_priority,
+            "sequenceNumber": normalized_sequence,
             # Legacy/diagnostic fields retained for existing consumers.
             "$schema": "https://citrineos.github.io/schemas/ems/intent/v1.json",
             "schemaVersion": "1.1.0",
@@ -121,55 +218,11 @@ class MqttIntentPublisher:
             },
             "metadata": {
                 "source": "home-assistant-citrine_ha",
-                "version": "0.2.0",
+                "version": "0.3.0",
                 "nativeContract": "EmsSiteIntentCreate",
+                "control": control_metadata,
             },
         }
-
-        payload_str = json.dumps(payload)
-        publish_data = {
-            "topic": self.intent_topic,
-            "payload": payload_str,
-            "retain": False,
-            "qos": 0,
-        }
-
-        self.last_attempt_count = 0
-        last_error: Exception | None = None
-        for attempt in range(1, 4):
-            self.last_attempt_count = attempt
-            try:
-                await self.hass.services.async_call(
-                    "mqtt",
-                    "publish",
-                    publish_data,
-                    blocking=True,
-                )
-                self.last_published_at = now_iso
-                self.publish_count += 1
-                self.last_publish_success = True
-                self.last_error = None
-                _LOGGER.debug(
-                    "Published EMS site intent to %s (attempt=%s allocated=%.1fW stations=%d)",
-                    self.intent_topic,
-                    attempt,
-                    allocated_ev_power_w,
-                    len(allocations),
-                )
-                return True
-            except Exception as err:  # noqa: BLE001
-                last_error = err
-                _LOGGER.warning(
-                    "MQTT intent publish failed (attempt=%s/3) to %s: %s",
-                    attempt,
-                    self.intent_topic,
-                    err,
-                )
-
-        self.publish_failure_count += 1
-        self.last_publish_success = False
-        self.last_error = str(last_error) if last_error else "Unknown MQTT publish failure"
-        return False
 
     @staticmethod
     def _normalize_operation_mode(operation_mode: str) -> str:

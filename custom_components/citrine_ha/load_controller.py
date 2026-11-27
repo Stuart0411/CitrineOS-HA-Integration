@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import inspect
 from datetime import UTC, datetime
 import json
 import logging
@@ -22,6 +23,7 @@ from .const import (
     CONF_BATTERY_SOC_SENSOR,
     CONF_CONTROLLER_INTERVAL_SECS,
     CONF_CONTROLLER_MODE,
+    CONF_EMS_ENDPOINT_PREFIX,
     CONF_EMS_INTENT_MODE,
     CONF_DEADBAND_W,
     CONF_DOE_EXPORT_LIMIT_SENSOR,
@@ -44,6 +46,7 @@ from .const import (
     CONF_STATION_IDENTIFIER_OVERRIDES,
     CONF_SOLAR_POWER_SENSOR,
     CONF_SOLAR_START_BUFFER_W,
+    DEFAULT_EMS_ENDPOINT_PREFIX,
     DEFAULT_BATTERY_MIN_SOC,
     DEFAULT_CONTROLLER_INTERVAL_SECS,
     DEFAULT_CONTROLLER_MODE,
@@ -133,6 +136,7 @@ class CitrineLoadController:
         self.last_command_limit_w: float | None = None
         self.last_command_timestamp: str | None = None
         self.last_command_error: str | None = None
+        self._intent_sequence_number = 0
 
         # Tracking per station
         self._last_applied_limits: dict[str, float] = {}
@@ -492,7 +496,10 @@ class CitrineLoadController:
             }
             for st_ctx in station_contexts
         ]
-        await self.mqtt_publisher.async_publish_intent(
+        intent_class, priority_band = self._derive_intent_routing()
+        self._intent_sequence_number += 1
+        control_metadata = self._build_intent_control_metadata(station_contexts)
+        intent_payload = self.mqtt_publisher.build_intent_payload(
             operation_mode=self.ems_intent_mode,
             reason=self.state_status,
             max_import_power_w=main_fuse_w,
@@ -501,8 +508,29 @@ class CitrineLoadController:
             solar_surplus_w=self.solar_surplus_w,
             site_headroom_w=self.site_headroom_w,
             allocations=allocation_payloads,
+            intent_class=intent_class,
+            priority_band=priority_band,
+            sequence_number=self._intent_sequence_number,
+            metadata_control=control_metadata,
             fallback_limit_w=min_current_a * voltage * phases,
         )
+        mqtt_published = await self.mqtt_publisher.async_publish_intent(
+            operation_mode=self.ems_intent_mode,
+            reason=self.state_status,
+            max_import_power_w=main_fuse_w,
+            max_export_power_w=export_limit_w,
+            allocated_ev_power_w=self.allocated_ev_power_w,
+            solar_surplus_w=self.solar_surplus_w,
+            site_headroom_w=self.site_headroom_w,
+            allocations=allocation_payloads,
+            intent_class=intent_class,
+            priority_band=priority_band,
+            sequence_number=self._intent_sequence_number,
+            metadata_control=control_metadata,
+            fallback_limit_w=min_current_a * voltage * phases,
+        )
+        if not mqtt_published:
+            await self._publish_intent_via_data_api(intent_payload)
 
         # Apply limits with deadbands, dwell time protection, and rate limiting
         for st_ctx in station_contexts:
@@ -535,6 +563,64 @@ class CitrineLoadController:
 
         if telemetry_health == "ok":
             self.last_error = None
+
+    def _derive_intent_routing(self) -> tuple[str, int]:
+        """Map current controller mode to EMS arbitration class and priority band."""
+        if self.mode in {MODE_OFF, MODE_EMERGENCY_SAFE}:
+            return ("hard_limit", 100)
+        if self.mode == MODE_DYNAMIC_DOE:
+            return ("site_cap", 90)
+        if self.mode == MODE_GRID_CAPPED:
+            return ("site_cap", 80)
+        if any(str(value).lower() == "boost" for value in self._station_overrides.values()):
+            return ("priority_boost", 60)
+        return ("optimization_setpoint", 40)
+
+    def _build_intent_control_metadata(
+        self,
+        station_contexts: list[StationLoadContext],
+    ) -> dict[str, Any]:
+        """Build explicit user/optimizer provenance expected by EMS control hierarchy."""
+        return {
+            "sourceSystem": "home-assistant",
+            "sourceComponent": "citrine_ha.load_controller",
+            "controllerMode": self.mode,
+            "emsIntentMode": self.ems_intent_mode,
+            "optimization": {
+                "allocator": "weighted_priority_phase_aware",
+                "activeEvCount": self.active_ev_count,
+                "solarSurplusW": round(float(self.solar_surplus_w), 1),
+                "siteHeadroomW": round(float(self.site_headroom_w), 1),
+            },
+            "userPreferences": {
+                "stationOverrides": {
+                    str(k): str(v) for k, v in self._station_overrides.items()
+                },
+                "stationPriorities": {
+                    str(k): int(v) for k, v in self._station_priorities.items()
+                },
+                "stationPhaseConnections": {
+                    str(k): str(v) for k, v in self._station_phase_connections.items()
+                },
+            },
+            "stationCount": len(station_contexts),
+        }
+
+    async def _publish_intent_via_data_api(self, payload: dict[str, Any]) -> None:
+        """Fallback to EMS Data API intent ingestion when MQTT path is unavailable."""
+        endpoint_prefix = str(
+            self.entry.options.get(CONF_EMS_ENDPOINT_PREFIX, DEFAULT_EMS_ENDPOINT_PREFIX)
+            or self.entry.data.get(CONF_EMS_ENDPOINT_PREFIX, DEFAULT_EMS_ENDPOINT_PREFIX)
+        )
+        try:
+            submit_result = self.client.create_ems_site_intent(
+                intent_payload=payload,
+                endpoint_prefix=endpoint_prefix,
+            )
+            if inspect.isawaitable(submit_result):
+                await submit_result
+        except CitrineApiError as err:
+            _LOGGER.warning("EMS site intent API fallback failed: %s", err)
 
     async def _apply_station_limit(self, st_ctx: StationLoadContext, limit_w: float) -> None:
         """Send charging limit to CitrineOS for a station."""

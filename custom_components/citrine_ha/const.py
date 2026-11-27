@@ -65,6 +65,7 @@ SERVICE_CLEAR_CHARGING_PROFILE = "clear_charging_profile"
 SERVICE_SYNC_DISCOVERY_NOW = "sync_discovery_now"
 SERVICE_SYNC_EMS_TELEMETRY_NOW = "sync_ems_telemetry_now"
 SERVICE_CLEAR_EMS_TELEMETRY_ERROR = "clear_ems_telemetry_error"
+SERVICE_SUBMIT_EMS_INTENT = "submit_ems_intent"
 
 ATTR_ENTRY_ID = "entry_id"
 ATTR_STATION_ID = "station_id"
@@ -87,6 +88,21 @@ ATTR_OPERATION_MODE = "operation_mode"
 ATTR_PROFILE_PERIODS = "profile_periods"
 ATTR_SITE_ID = "site_id"
 ATTR_TELEMETRY_LIMIT = "telemetry_limit"
+ATTR_INTENT_CLASS = "intent_class"
+ATTR_PRIORITY_BAND = "priority_band"
+ATTR_SEQUENCE_NUMBER = "sequence_number"
+ATTR_REASON = "reason"
+ATTR_MAX_IMPORT_W = "max_import_w"
+ATTR_MAX_EXPORT_W = "max_export_w"
+ATTR_EV_CHARGE_BUDGET_W = "ev_charge_budget_w"
+ATTR_EV_DISCHARGE_BUDGET_W = "ev_discharge_budget_w"
+
+EMS_INTENT_CLASSES = [
+    "hard_limit",
+    "site_cap",
+    "priority_boost",
+    "optimization_setpoint",
+]
 
 DEFAULT_PROFILE_KIND = "Absolute"
 

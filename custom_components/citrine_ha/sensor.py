@@ -71,6 +71,8 @@ async def async_setup_entry(
             CitrineEmsIntakeTotalSensor(coordinator, entry),
             CitrineEmsTelemetryFreshnessSensor(coordinator, entry),
             CitrineEmsTelemetryHealthStatusSensor(coordinator, entry),
+            CitrineEmsEffectiveControlRequestedEvBudgetSensor(coordinator, entry),
+            CitrineEmsEffectiveControlAppliedEvBudgetSensor(coordinator, entry),
             CitrineLastCommandStatusSensor(controller, entry),
         ]
     )
@@ -698,6 +700,91 @@ class CitrineEmsIntakeRejectedSensor(CoordinatorEntity[CitrineCoordinator], Sens
     def native_value(self) -> int:
         telemetry = self.coordinator.data.get("intake_telemetry", {})
         return int(telemetry.get("rejected", 0) or 0)
+
+
+class CitrineEmsEffectiveControlRequestedEvBudgetSensor(
+    CoordinatorEntity[CitrineCoordinator], SensorEntity
+):
+    """Latest EMS requested EV charge budget from effective-control summary."""
+
+    _attr_icon = "mdi:transmission-tower-import"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: CitrineCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_ems_effective_control_requested_ev_budget_w"
+        self._attr_name = "Citrine EMS Requested EV Budget"
+
+    @property
+    def native_value(self) -> float | None:
+        control = self.coordinator.data.get("effective_control", {})
+        effective_site = control.get("effectiveControl", {})
+        value = effective_site.get("requestedEvChargeBudgetW")
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        control = self.coordinator.data.get("effective_control", {})
+        return {
+            "site_id": control.get("siteId"),
+            "latest_created_at": control.get("latestCreatedAt"),
+            "latest_intent_message_id": control.get("latestIntentMessageId"),
+            "latest_decision_type": control.get("latestDecisionType"),
+            "fetched_at": control.get("fetchedAt"),
+            "last_success_at": control.get("lastSuccessAt"),
+            "effective_control_error": control.get("error"),
+        }
+
+
+class CitrineEmsEffectiveControlAppliedEvBudgetSensor(
+    CoordinatorEntity[CitrineCoordinator], SensorEntity
+):
+    """Latest EMS effective EV charge budget after hierarchy/clamping."""
+
+    _attr_icon = "mdi:transmission-tower"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: CitrineCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_ems_effective_control_applied_ev_budget_w"
+        self._attr_name = "Citrine EMS Effective EV Budget"
+
+    @property
+    def native_value(self) -> float | None:
+        control = self.coordinator.data.get("effective_control", {})
+        effective_site = control.get("effectiveControl", {})
+        value = effective_site.get("effectiveEvChargeBudgetW")
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        control = self.coordinator.data.get("effective_control", {})
+        effective_site = control.get("effectiveControl", {})
+        return {
+            "site_id": control.get("siteId"),
+            "requested_ev_charge_budget_w": effective_site.get("requestedEvChargeBudgetW"),
+            "effective_ev_discharge_budget_w": effective_site.get("effectiveEvDischargeBudgetW"),
+            "requested_ev_discharge_budget_w": effective_site.get("requestedEvDischargeBudgetW"),
+            "latest_created_at": control.get("latestCreatedAt"),
+            "latest_intent_message_id": control.get("latestIntentMessageId"),
+            "latest_decision_type": control.get("latestDecisionType"),
+            "stations": control.get("stations", []),
+            "fetched_at": control.get("fetchedAt"),
+            "last_success_at": control.get("lastSuccessAt"),
+            "effective_control_error": control.get("error"),
+        }
 
 
 def _site_device_info(entry: ConfigEntry) -> DeviceInfo:

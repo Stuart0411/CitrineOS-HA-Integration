@@ -350,3 +350,67 @@ emergency_safe_mode:
       selector:
         text:
 
+submit_ems_intent:
+  name: Submit EMS intent
+  description: Submit a native EMS site intent (MQTT-first, REST fallback) with explicit intent class and hierarchy hints.
+  fields:
+    entry_id:
+      required: false
+      selector:
+        text:
+    site_id:
+      required: false
+      description: Optional site id override. Defaults to configured site id.
+      selector:
+        text:
+    intent_class:
+      required: false
+      description: EMS hierarchy intent class.
+      selector:
+        select:
+          options:
+            - hard_limit
+            - site_cap
+            - priority_boost
+            - optimization_setpoint
+    reason:
+      required: false
+      selector:
+        text:
+    priority_band:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 100
+    sequence_number:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 999999
+    max_import_w:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 1000000
+    max_export_w:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 1000000
+    ev_charge_budget_w:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 1000000
+    ev_discharge_budget_w:
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 1000000
+
