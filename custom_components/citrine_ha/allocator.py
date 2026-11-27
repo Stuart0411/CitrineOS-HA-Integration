@@ -23,7 +23,7 @@ class StationLoadContext:
     max_limit_w: float = 7400.0  # Station hardware limit (e.g. 32A @ 230V 1-ph or 22kW 3-ph)
     min_current_a: float = 6.0  # Minimum pilot current
     phases: int = 1
-    phase_connection: str = "3phase"  # "3phase", "L1", "L2", "L3"
+    phase_connection: str = "L1"  # "3phase", "L1", "L2", "L3"
     nominal_voltage: float = 230.0
     override_mode: str = "auto"  # "auto", "boost", "pause"
 
